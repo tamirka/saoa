@@ -1,20 +1,51 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import FileUploader from '../../components/ui/FileUploader';
 import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
+import { createSellerProfile } from '../../lib/api';
 
 const OnboardingPage: React.FC = () => {
     const [step, setStep] = useState(1);
     const { user } = useAuth();
     const navigate = useNavigate();
+    const { addToast } = useToast();
 
+    const [formData, setFormData] = useState({
+        company_name: '',
+        description: '',
+        logo: null as File | null,
+        shipping_policy: '',
+        return_policy: '',
+    });
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+
+    const handleFileChange = (file: File | null) => {
+        setFormData(prev => ({ ...prev, logo: file }));
+    };
+    
     const handleNext = () => setStep(s => s + 1);
     const handlePrev = () => setStep(s => s - 1);
-    const handleFinish = () => {
-        // In a real app, you would save the data here
-        console.log("Seller onboarding complete!");
-        navigate('/dashboard');
+
+    const handleFinish = async () => {
+        setIsLoading(true);
+        try {
+            await createSellerProfile(formData);
+            addToast("Your seller profile has been created!", 'success');
+            navigate('/dashboard');
+        } catch (error) {
+            console.error(error);
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            addToast(`Failed to create profile: ${errorMessage}`, 'error');
+        } finally {
+            setIsLoading(false);
+        }
     }
 
     if (user?.role !== 'seller') {
@@ -34,7 +65,6 @@ const OnboardingPage: React.FC = () => {
                 </h1>
                 <p className="text-center text-gray-500 dark:text-gray-400 mb-8">Let's set up your shop.</p>
                 
-                {/* Stepper */}
                 <div className="mb-8">
                     <ol className="flex items-center w-full">
                         <li className={`flex w-full items-center ${step >= 1 ? 'text-indigo-600 dark:text-indigo-500' : 'text-gray-500'} after:content-[''] after:w-full after:h-1 after:border-b ${step > 1 ? 'after:border-indigo-600' : 'after:border-gray-200'} after:border-1 after:inline-block dark:after:border-gray-700`}>
@@ -63,15 +93,15 @@ const OnboardingPage: React.FC = () => {
                         <h3 className="text-xl font-medium">Company Details</h3>
                         <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company Name</label>
-                            <input name="companyName" placeholder="e.g., PackPro Inc." className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                            <input name="company_name" value={formData.company_name} onChange={handleChange} placeholder="e.g., PackPro Inc." className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
                         </div>
                          <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company Logo</label>
-                            <FileUploader onFileChange={() => {}} />
+                            <FileUploader onFileChange={handleFileChange} />
                         </div>
                         <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Short Description</label>
-                            <textarea name="description" placeholder="What makes your packaging special?" rows={4} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                            <textarea name="description" value={formData.description} onChange={handleChange} placeholder="What makes your packaging special?" rows={4} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
                         </div>
                     </div>
                 )}
@@ -81,11 +111,11 @@ const OnboardingPage: React.FC = () => {
                         <h3 className="text-xl font-medium">Shipping & Policies</h3>
                         <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Shipping Policy</label>
-                            <textarea name="shippingPolicy" placeholder="Describe your shipping process, lead times, and regions you ship to." rows={4} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                            <textarea name="shipping_policy" value={formData.shipping_policy} onChange={handleChange} placeholder="Describe your shipping process, lead times, and regions you ship to." rows={4} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
                         </div>
                          <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Return Policy</label>
-                            <textarea name="returnPolicy" placeholder="Describe your policy on returns and refunds for custom products." rows={4} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                            <textarea name="return_policy" value={formData.return_policy} onChange={handleChange} placeholder="Describe your policy on returns and refunds for custom products." rows={4} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
                         </div>
                     </div>
                 )}
@@ -98,15 +128,16 @@ const OnboardingPage: React.FC = () => {
                     </div>
                 )}
 
-
                 <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex justify-between">
                     {step > 1 ? (
-                        <Button variant="secondary" onClick={handlePrev}>Previous</Button>
+                        <Button type="button" variant="secondary" onClick={handlePrev}>Previous</Button>
                     ) : <div />}
                     {step < 3 ? (
-                        <Button onClick={handleNext}>Next</Button>
+                        <Button type="button" onClick={handleNext}>Next</Button>
                     ) : (
-                        <Button onClick={handleFinish}>Go to Dashboard</Button>
+                        <Button type="button" onClick={handleFinish} disabled={isLoading}>
+                            {isLoading ? 'Saving...' : 'Go to Dashboard'}
+                        </Button>
                     )}
                 </div>
             </div>

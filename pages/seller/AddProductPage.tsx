@@ -1,68 +1,158 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
+import FileUploader from '../../components/ui/FileUploader';
+import { getCategories, createProduct } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
+import type { Category } from '../../types';
+
+interface VariantFormData {
+    id: number; // temporary client-side ID for list key
+    name: string;
+    paper_type: string;
+    price_per_unit: string;
+}
 
 const AddProductPage: React.FC = () => {
     const [step, setStep] = useState(1);
+    const navigate = useNavigate();
+    const { addToast } = useToast();
+
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
     const [productData, setProductData] = useState({
-        title: '',
-        category: '',
+        name: '',
+        category_id: '',
         description: '',
+        min_order_quantity: '50',
     });
+    const [variants, setVariants] = useState<VariantFormData[]>([
+        { id: Date.now(), name: '', paper_type: '', price_per_unit: '' }
+    ]);
+    const [images, setImages] = useState<File[]>([]);
+
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const cats = await getCategories();
+                setCategories(cats);
+            } catch (err) {
+                addToast("Could not load categories.", 'error');
+            }
+        };
+        fetchCategories();
+    }, [addToast]);
 
     const handleNext = () => setStep(s => s + 1);
     const handlePrev = () => setStep(s => s - 1);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setProductData(prev => ({ ...prev, [name]: value }));
+        setProductData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+
+    const handleVariantChange = (id: number, field: keyof Omit<VariantFormData, 'id'>, value: string) => {
+        setVariants(currentVariants => 
+            currentVariants.map(v => v.id === id ? { ...v, [field]: value } : v)
+        );
+    };
+    
+    const addVariant = () => {
+        setVariants(prev => [...prev, { id: Date.now(), name: '', paper_type: '', price_per_unit: '' }]);
+    };
+    
+    const removeVariant = (id: number) => {
+        setVariants(prev => prev.filter(v => v.id !== id));
+    };
+
+    const handlePublish = async () => {
+        setError(null);
+        if (!productData.name || !productData.category_id || images.length === 0) {
+            setError("Please fill in all required fields and upload at least one image.");
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await createProduct({
+                ...productData,
+                variants,
+                images,
+            });
+            addToast("Product published successfully!", 'success');
+            navigate('/dashboard/my-products');
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "An unexpected error occurred.";
+            setError(message);
+            addToast(`Error: ${message}`, 'error');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
         <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Add New Product</h2>
             
-            {/* Simple Stepper */}
-            <div className="mb-8">
-                <ol className="flex items-center w-full">
-                    <li className={`flex w-full items-center ${step >= 1 ? 'text-indigo-600 dark:text-indigo-500' : 'text-gray-500'} after:content-[''] after:w-full after:h-1 after:border-b ${step > 1 ? 'after:border-indigo-600' : 'after:border-gray-200'} after:border-1 after:inline-block dark:after:border-gray-700`}>
-                        <span className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-full lg:h-12 lg:w-12 dark:bg-gray-700 shrink-0">1</span>
-                    </li>
-                    <li className={`flex w-full items-center ${step >= 2 ? 'text-indigo-600 dark:text-indigo-500' : 'text-gray-500'} after:content-[''] after:w-full after:h-1 after:border-b ${step > 2 ? 'after:border-indigo-600' : 'after:border-gray-200'} after:border-1 after:inline-block dark:after:border-gray-700`}>
-                        <span className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-full lg:h-12 lg:w-12 dark:bg-gray-700 shrink-0">2</span>
-                    </li>
-                    <li className={`flex items-center ${step >= 3 ? 'text-indigo-600 dark:text-indigo-500' : 'text-gray-500'}`}>
-                        <span className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-full lg:h-12 lg:w-12 dark:bg-gray-700 shrink-0">3</span>
-                    </li>
-                </ol>
+            <div className="mb-8 flex justify-between items-center max-w-xl mx-auto">
+                <div className={`text-center ${step >= 1 ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500'}`}>Step 1: Details</div>
+                <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600 mx-4"></div>
+                <div className={`text-center ${step >= 2 ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500'}`}>Step 2: Variants</div>
+                <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600 mx-4"></div>
+                <div className={`text-center ${step >= 3 ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500'}`}>Step 3: Images</div>
             </div>
 
+            {error && <p className="text-center text-red-500 mb-4">{error}</p>}
+
             {step === 1 && (
-                <div>
-                    <h3 className="text-lg font-medium mb-4">Basic Information</h3>
-                    <div className="space-y-4">
-                        <input name="title" value={productData.title} onChange={handleChange} placeholder="Product Title" className="w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
-                        <select name="category" value={productData.category} onChange={handleChange} className="w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700">
-                            <option>Select Category</option>
-                            <option>Boxes</option>
-                            <option>Pouches</option>
+                <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Basic Information</h3>
+                    <div>
+                        <label>Product Name</label>
+                        <input name="name" value={productData.name} onChange={handleChange} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                    </div>
+                    <div>
+                        <label>Category</label>
+                        <select name="category_id" value={productData.category_id} onChange={handleChange} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700">
+                            <option value="">Select Category</option>
+                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
-                        <textarea name="description" value={productData.description} onChange={handleChange} placeholder="Description" rows={4} className="w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                    </div>
+                    <div>
+                        <label>Description</label>
+                        <textarea name="description" value={productData.description} onChange={handleChange} rows={4} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                    </div>
+                     <div>
+                        <label>Minimum Order Quantity</label>
+                        <input name="min_order_quantity" type="number" value={productData.min_order_quantity} onChange={handleChange} className="mt-1 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
                     </div>
                 </div>
             )}
 
             {step === 2 && (
-                <div>
-                    <h3 className="text-lg font-medium mb-4">Variants & Pricing</h3>
-                    <p>Form for adding sizes, paper types, and prices would go here.</p>
+                <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Variants & Pricing</h3>
+                    {variants.map((variant, index) => (
+                        <div key={variant.id} className="p-4 border rounded-md dark:border-gray-700 space-y-3 relative">
+                            {variants.length > 1 && (
+                                <button onClick={() => removeVariant(variant.id)} className="absolute top-2 right-2 text-red-500">&times;</button>
+                            )}
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <input placeholder="Variant Name (e.g., Small)" value={variant.name} onChange={e => handleVariantChange(variant.id, 'name', e.target.value)} className="w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                                <input placeholder="Paper Type (e.g., Kraft)" value={variant.paper_type} onChange={e => handleVariantChange(variant.id, 'paper_type', e.target.value)} className="w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                                <input type="number" placeholder="Price Per Unit ($)" value={variant.price_per_unit} onChange={e => handleVariantChange(variant.id, 'price_per_unit', e.target.value)} className="w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
+                            </div>
+                        </div>
+                    ))}
+                    <Button variant="secondary" onClick={addVariant}>Add Another Variant</Button>
                 </div>
             )}
 
             {step === 3 && (
                 <div>
-                    <h3 className="text-lg font-medium mb-4">Images & Preview</h3>
-                    <p>Image uploader and a preview of the product listing would be here.</p>
+                    <h3 className="text-lg font-medium mb-4">Product Images</h3>
+                    <FileUploader multiple onFilesChange={setImages} />
                 </div>
             )}
 
@@ -73,7 +163,9 @@ const AddProductPage: React.FC = () => {
                 {step < 3 ? (
                     <Button onClick={handleNext}>Next</Button>
                 ) : (
-                    <Button>Publish Product</Button>
+                    <Button onClick={handlePublish} disabled={isLoading}>
+                        {isLoading ? 'Publishing...' : 'Publish Product'}
+                    </Button>
                 )}
             </div>
         </div>

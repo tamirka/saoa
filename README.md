@@ -219,4 +219,30 @@ CREATE TABLE public.notifications (
 -- RLS Policy for notifications
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage their own notifications." ON public.notifications FOR ALL USING (auth.uid() = user_id);
+
+-- 11. Storage Buckets for Images
+-- Seller Logos
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('seller_logos', 'seller_logos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Product Images
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('product_images', 'product_images', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- RLS Policies for Storage
+-- Allow sellers to upload logos and product images
+CREATE POLICY "Sellers can upload to their own folder"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  (bucket_id = 'seller_logos' OR bucket_id = 'product_images') AND
+  (storage.owner_uid() = auth.uid())
+);
+
+-- Allow anyone to view images
+CREATE POLICY "Images are publicly accessible"
+ON storage.objects FOR SELECT
+USING ( bucket_id = 'seller_logos' OR bucket_id = 'product_images' );
 ```

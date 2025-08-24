@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import type { Product, Category, Order, Notification, Review } from '../types';
 
@@ -23,7 +24,7 @@ const mapToProductType = (p: any): Product => ({
     },
     category: p.categories.name,
     imageUrl: p.image_url,
-    images: p.images,
+    images: p.images || [],
     description: p.description,
     minOrderQuantity: p.min_order_quantity,
     rating: 4.8, // calculated
@@ -67,12 +68,9 @@ export async function getProducts(options?: { limit?: number; searchTerm?: strin
     }
     if (options?.maxMoq) query = query.lte('min_order_quantity', options.maxMoq);
 
-    // Sorting logic would be added here
-
     const { data, error } = await query;
     if (error) throw error;
     
-    // Map simplified data structure for list view
     return data.map((p: any) => ({
         id: p.id.toString(),
         name: p.name,
@@ -83,10 +81,9 @@ export async function getProducts(options?: { limit?: number; searchTerm?: strin
             id: p.sellers.id,
             name: p.sellers.profiles.full_name,
             logoUrl: p.sellers.logo_url,
-            response_time: 0, rating: 0, reviews: 0 // Not fetched for list view
+            response_time: 0, rating: 0, reviews: 0
         },
-        rating: 4.5, // Not fetched
-        reviewsCount: 100, // Not fetched
+        rating: 4.5, reviewsCount: 100,
         images: [], variants: [], description: '', faqs: [], reviews: []
     }));
 }
@@ -116,7 +113,6 @@ export async function getProductsBySeller(sellerId: string): Promise<Product[]> 
         categories ( name )
     `).eq('seller_id', sellerId);
     if (error) throw error;
-    // Simplified mapping for seller dashboard
     return data.map((p:any) => ({
         id: p.id.toString(),
         name: p.name,
@@ -127,19 +123,99 @@ export async function getProductsBySeller(sellerId: string): Promise<Product[]> 
     }));
 }
 
+export async function createSellerProfile(profileData: any): Promise<any> {
+    const sb = checkSupabase();
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    let logoUrl = null;
+    if (profileData.logo) {
+        const file = profileData.logo;
+        const filePath = `${user.id}/${Date.now()}_${file.name}`;
+        await sb.storage.from('seller_logos').upload(filePath, file, { upsert: true });
+        const { data } = sb.storage.from('seller_logos').getPublicUrl(filePath);
+        logoUrl = data.publicUrl;
+    }
+
+    const { data, error } = await sb.from('sellers').upsert({
+        id: user.id,
+        company_name: profileData.company_name,
+        description: profileData.description,
+        shipping_policy: profileData.shipping_policy,
+        return_policy: profileData.return_policy,
+        logo_url: logoUrl,
+    }).select().single();
+
+    if (error) throw error;
+    return data;
+}
+
+async function uploadProductImages(files: File[], sellerId: string): Promise<string[]> {
+    const sb = checkSupabase();
+    const uploadPromises = files.map(async file => {
+        const filePath = `${sellerId}/${Date.now()}_${file.name}`;
+        const { error } = await sb.storage.from('product_images').upload(filePath, file);
+        if (error) throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+        const { data } = sb.storage.from('product_images').getPublicUrl(filePath);
+        return data.publicUrl;
+    });
+    return Promise.all(uploadPromises);
+}
+
+export async function createProduct(productDetails: any): Promise<any> {
+    const sb = checkSupabase();
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    const imageUrls = await uploadProductImages(productDetails.images, user.id);
+
+    const { data: newProduct, error: productError } = await sb
+        .from('products')
+        .insert({
+            name: productDetails.name,
+            description: productDetails.description,
+            category_id: parseInt(productDetails.category_id, 10),
+            seller_id: user.id,
+            min_order_quantity: parseInt(productDetails.min_order_quantity, 10),
+            image_url: imageUrls[0] || null,
+            images: imageUrls.length > 1 ? imageUrls.slice(1) : [],
+        })
+        .select()
+        .single();
+    
+    if (productError) throw productError;
+
+    const variantsToInsert = productDetails.variants.map((v: any) => ({
+        product_id: newProduct.id,
+        name: v.name,
+        paper_type: v.paper_type,
+        price_per_unit: parseFloat(v.price_per_unit),
+    }));
+
+    if (variantsToInsert.length > 0) {
+        const { error: variantError } = await sb.from('product_variants').insert(variantsToInsert);
+        if (variantError) {
+            await sb.from('products').delete().eq('id', newProduct.id);
+            throw variantError;
+        }
+    }
+
+    return newProduct;
+}
+
+// Existing functions
 export async function getOrders(): Promise<Order[]> {
     const sb = checkSupabase();
     const { data, error } = await sb.from('orders').select('*'); // Should be user-specific
     if (error) throw error;
-    // This is a placeholder as items need to be fetched separately
     return data.map(o => ({
         id: o.id.toString(),
         date: o.created_at,
         status: o.status,
         total: o.total,
         shippingAddress: (o.shipping_address as any)?.address || 'N/A',
-        items: [], // requires another query
-        statusHistory: [] // requires another query or table
+        items: [],
+        statusHistory: []
     }));
 }
 
@@ -148,7 +224,6 @@ export async function getOrderById(id: string): Promise<Order | null> {
     const { data, error } = await sb.from('orders').select('*').eq('id', id).single();
     if (error) throw error;
     if (!data) return null;
-    // Also a placeholder
      return {
         id: data.id.toString(),
         date: data.created_at,
