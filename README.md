@@ -41,22 +41,33 @@ CREATE TABLE profiles (
 );
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- This new, single policy is robust and prevents race conditions on login.
-CREATE POLICY "Authenticated users can view profiles." ON profiles FOR SELECT
-TO authenticated
-USING (true);
+-- Drop old policies to ensure a clean state from previous attempts
+DROP POLICY IF EXISTS "Users can view their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Authenticated users can view profiles." ON public.profiles;
+
+-- Create the new policy that makes profiles publicly readable.
+-- This is safe for non-sensitive data and completely eliminates the race condition on login/signup.
+CREATE POLICY "Profiles are viewable by everyone." ON public.profiles
+FOR SELECT USING (true);
 
 -- Allow users to update their own profile
 CREATE POLICY "Users can update their own profile." ON profiles FOR UPDATE USING ( auth.uid() = id );
 
-
--- This trigger automatically creates a profile entry when a new user signs up
--- It correctly pulls the 'role' from the metadata provided during sign-up.
+-- This trigger automatically creates a profile entry when a new user signs up.
+-- It is now more robust and includes a fallback.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, role)
-  VALUES (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'role');
+  IF new.raw_user_meta_data IS NOT NULL AND 
+     new.raw_user_meta_data ? 'full_name' AND 
+     new.raw_user_meta_data ? 'role' THEN
+    INSERT INTO public.profiles (id, full_name, role)
+    VALUES (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'role');
+  ELSE
+    -- Fallback for cases where metadata might be missing
+    INSERT INTO public.profiles (id, full_name, role)
+    VALUES (new.id, 'New User', 'buyer');
+  END IF;
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

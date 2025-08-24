@@ -10,11 +10,12 @@ const LoginPage: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false); // Local loading state for the form
     const navigate = useNavigate();
     const { user, loading: authLoading } = useAuth();
 
     useEffect(() => {
-        // Don't do anything while auth is still loading or if there's no user
+        // This effect handles redirection after the user state is confirmed.
         if (authLoading || !user) {
             return;
         }
@@ -39,21 +40,27 @@ const LoginPage: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
-
-        if (!email || !password) {
-            setError('Please enter both email and password.');
-            return;
-        }
+        setIsLoading(true);
 
         try {
-            // signInWithEmail will trigger the onAuthStateChange listener in AuthContext.
-            // The AuthContext will then handle the loading state and user fetching.
+            // The onAuthStateChange listener in AuthContext will handle setting the user state.
+            // This component will then react to that change via the useEffect above.
             await signInWithEmail(email, password);
-            // The useEffect hook will now handle the redirect once the AuthContext is updated.
         } catch (err: any) {
             setError(err.message || "Failed to sign in.");
+            setIsLoading(false); // Stop loading on error
         }
+        // Don't set isLoading to false on success, as the redirect will happen.
     };
+    
+    // If the app is still checking the initial session, show a full-page loader.
+    if (authLoading) {
+        return (
+            <div className="min-h-full flex items-center justify-center py-12">
+                 <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+            </div>
+        )
+    }
 
     return (
         <div className="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -104,24 +111,9 @@ const LoginPage: React.FC = () => {
 
                     {error && <p className="text-sm text-red-600 text-center">{error}</p>}
 
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                            <input id="remember-me" name="remember-me" type="checkbox" className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
-                            <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900 dark:text-gray-300">
-                                Remember me
-                            </label>
-                        </div>
-
-                        <div className="text-sm">
-                            <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">
-                                Forgot your password?
-                            </a>
-                        </div>
-                    </div>
-
                     <div>
-                        <Button type="submit" className="w-full" size="lg" disabled={authLoading}>
-                            {authLoading ? 'Signing In...' : 'Sign in'}
+                        <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+                            {isLoading ? 'Signing In...' : 'Sign in'}
                         </Button>
                     </div>
                 </form>

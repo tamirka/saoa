@@ -7,38 +7,33 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<Profile | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    const fetchAndSetUser = useCallback(async (userId: string, retries = 3) => {
-        for (let i = 0; i < retries; i++) {
-            const profile = await fetchUserProfile(userId);
-            if (profile) {
-                setUser(profile);
-                return;
-            }
-            // Wait before retrying
-            await new Promise(res => setTimeout(res, 1000 * (i + 1)));
-        }
-        console.error("Failed to fetch user profile after multiple retries.");
-        // Potentially sign out the user if profile is critical
-        await supabase.auth.signOut();
-    }, []);
+    const [loading, setLoading] = useState(true); // Only for the initial session check
 
     useEffect(() => {
-        setLoading(true);
+        const checkInitialSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                const profile = await fetchUserProfile(session.user.id);
+                setUser(profile);
+            }
+            setLoading(false);
+        };
+
+        checkInitialSession();
+
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
-                await fetchAndSetUser(session.user.id);
+                const profile = await fetchUserProfile(session.user.id);
+                setUser(profile);
             } else {
                 setUser(null);
             }
-            setLoading(false);
         });
 
         return () => {
             subscription.unsubscribe();
         };
-    }, [fetchAndSetUser]);
+    }, []);
 
     const signOut = async () => {
         await supabase.auth.signOut();

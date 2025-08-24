@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import { Logo } from '../components/ui/Icons';
 import { signUpWithEmail } from '../lib/auth';
+import { useToast } from '../hooks/useToast';
 
 type Role = 'buyer' | 'seller';
 
@@ -15,6 +16,7 @@ const SignUpPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     
     const navigate = useNavigate();
+    const { addToast } = useToast();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,6 +29,11 @@ const SignUpPage: React.FC = () => {
 
         try {
             await signUpWithEmail(email, password, fullName, role);
+            
+            // The onAuthStateChange listener in AuthContext will now be picking up the new user.
+            // We can confidently navigate.
+            addToast('Account created successfully!', 'success');
+
             if (role === 'seller') {
                 navigate('/seller-onboarding');
             } else {
@@ -34,8 +41,7 @@ const SignUpPage: React.FC = () => {
             }
         } catch (err: any) {
             setError(err.message || 'An unexpected error occurred.');
-        } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Stop loading on error
         }
     };
 
