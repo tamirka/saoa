@@ -53,47 +53,30 @@ export const signUpWithEmail = async (
 
 
 /**
- * Signs in a user with email and password.
+ * Signs in a user with email and password. The user profile is fetched
+ * separately by the AuthContext listener.
  * @param email - The user's email.
  * @param password - The user's password.
- * @returns An object with the user data or an error.
+ * @returns An object with an error if one occurred.
  */
 export const signInWithEmail = async (
   email: string,
   password: string
-): Promise<{ user: User | null; error: Error | null }> => {
+): Promise<{ error: Error | null }> => {
     if (!supabase) {
-        return { user: null, error: new Error("Backend service is not available.") };
+        return { error: new Error("Backend service is not available.") };
     }
     
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
     });
 
-    if (authError) return { user: null, error: new Error(authError.message) };
-    if (!authData.user) return { user: null, error: new Error("Sign in failed, no user returned.") };
-
-    const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('full_name, role')
-        .eq('id', authData.user.id)
-        .single();
-    
-    if (profileError || !profile) {
-        // Sign out the user if their profile is missing to avoid a broken state.
-        await supabase.auth.signOut();
-        return { user: null, error: new Error("Could not fetch user profile.") };
+    if (error) {
+        return { error: new Error(error.message) };
     }
-
-    const user: User = {
-        id: authData.user.id,
-        name: profile.full_name,
-        email: authData.user.email!,
-        role: profile.role as 'buyer' | 'seller',
-    };
     
-    return { user, error: null };
+    return { error: null };
 };
 
 /**

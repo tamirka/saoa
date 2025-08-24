@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import { Logo } from '../components/ui/Icons';
@@ -11,7 +11,13 @@ const LoginPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
-    const { login } = useAuth();
+    const { isAuthenticated } = useAuth();
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            navigate('/dashboard', { replace: true });
+        }
+    }, [isAuthenticated, navigate]);
 
     const validateEmail = (email: string) => {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -31,17 +37,13 @@ const LoginPage: React.FC = () => {
         }
 
         setIsLoading(true);
-        const { user, error: authError } = await signInWithEmail(email, password);
+        const { error: authError } = await signInWithEmail(email, password);
         setIsLoading(false);
 
         if (authError) {
             setError(authError.message);
-        } else if (user) {
-            login(user);
-            navigate('/dashboard');
-        } else {
-            setError('An unexpected error occurred. Please try again.');
         }
+        // On success, the useEffect will handle the redirect when isAuthenticated becomes true.
     };
 
     return (
