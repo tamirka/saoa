@@ -62,6 +62,27 @@ export interface Notification {
     link: string;
 }
 
+export interface Conversation {
+  id: string;
+  other_user: {
+    id: string;
+    name: string;
+  };
+  last_message: {
+    content: string;
+    created_at: string;
+  } | null;
+  unread_count: number;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+}
+
 export type Theme = 'light' | 'dark';
 
 export interface ThemeContextType {

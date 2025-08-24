@@ -220,7 +220,94 @@ CREATE TABLE public.notifications (
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage their own notifications." ON public.notifications FOR ALL USING (auth.uid() = user_id);
 
--- 11. Storage Buckets for Images
+
+-- 11. MESSAGING SCHEMA
+-- Enable realtime for messages table
+ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+
+-- Table to hold conversations
+CREATE TABLE public.conversations (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS for conversations
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can only view conversations they are in." ON public.conversations FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.conversation_participants
+    WHERE conversation_id = id AND user_id = auth.uid()
+  )
+);
+
+-- Join table for users and conversations
+CREATE TABLE public.conversation_participants (
+  conversation_id BIGINT NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  PRIMARY KEY (conversation_id, user_id)
+);
+
+-- RLS for conversation_participants
+ALTER TABLE public.conversation_participants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can see their own participation." ON public.conversation_participants FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users can manage their own participation." ON public.conversation_participants FOR ALL USING (user_id = auth.uid());
+
+
+-- Table for messages
+CREATE TABLE public.messages (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  conversation_id BIGINT NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS for messages
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view messages in their conversations." ON public.messages FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.conversation_participants
+    WHERE conversation_id = messages.conversation_id AND user_id = auth.uid()
+  )
+);
+CREATE POLICY "Users can send messages in their conversations." ON public.messages FOR INSERT
+WITH CHECK (
+  sender_id = auth.uid() AND
+  EXISTS (
+    SELECT 1 FROM public.conversation_participants
+    WHERE conversation_id = messages.conversation_id AND user_id = auth.uid()
+  )
+);
+
+
+-- DB function to create a conversation if one doesn't exist
+CREATE OR REPLACE FUNCTION get_or_create_conversation(recipient_id UUID)
+RETURNS BIGINT AS $$
+DECLARE
+  conversation_id BIGINT;
+  current_user_id UUID := auth.uid();
+BEGIN
+  -- Find an existing conversation between the two users
+  SELECT cp1.conversation_id INTO conversation_id
+  FROM conversation_participants AS cp1
+  JOIN conversation_participants AS cp2 ON cp1.conversation_id = cp2.conversation_id
+  WHERE cp1.user_id = current_user_id AND cp2.user_id = recipient_id;
+
+  -- If no conversation is found, create a new one
+  IF conversation_id IS NULL THEN
+    INSERT INTO conversations DEFAULT VALUES RETURNING id INTO conversation_id;
+    INSERT INTO conversation_participants (conversation_id, user_id)
+    VALUES (conversation_id, current_user_id), (conversation_id, recipient_id);
+  END IF;
+
+  RETURN conversation_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- 12. Storage Buckets for Images
 -- Seller Logos
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('seller_logos', 'seller_logos', true)

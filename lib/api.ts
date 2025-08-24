@@ -1,6 +1,5 @@
-
 import { supabase } from './supabaseClient';
-import type { Product, Category, Order, Notification, Review } from '../types';
+import type { Product, Category, Order, Notification, Review, Conversation, Message } from '../types';
 
 const checkSupabase = () => {
     if (!supabase) {
@@ -201,6 +200,72 @@ export async function createProduct(productDetails: any): Promise<any> {
     }
 
     return newProduct;
+}
+
+// MESSAGING API
+export async function getConversations(): Promise<Conversation[]> {
+    const sb = checkSupabase();
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    const { data, error } = await sb
+        .from('conversation_participants')
+        .select('conversation_id, profiles(id, full_name)')
+        .neq('user_id', user.id);
+
+    if (error) throw error;
+    
+    // This is a simplified fetch. A real app might use an RPC to get last message + unread count.
+    return data.map((item: any) => ({
+        id: item.conversation_id.toString(),
+        other_user: {
+            id: item.profiles.id,
+            name: item.profiles.full_name,
+        },
+        last_message: null, // To be implemented
+        unread_count: 0,    // To be implemented
+    }));
+}
+
+export async function getMessages(conversationId: string): Promise<Message[]> {
+    const sb = checkSupabase();
+    const { data, error } = await sb
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data.map(m => ({...m, id: m.id.toString()}));
+}
+
+export async function sendMessage(conversationId: string, content: string): Promise<Message> {
+    const sb = checkSupabase();
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    const { data, error } = await sb
+        .from('messages')
+        .insert({
+            conversation_id: conversationId,
+            sender_id: user.id,
+            content: content
+        })
+        .select()
+        .single();
+    
+    if (error) throw error;
+    return {...data, id: data.id.toString() };
+}
+
+export async function getOrCreateConversation(recipientId: string): Promise<string> {
+    const sb = checkSupabase();
+    const { data, error } = await sb.rpc('get_or_create_conversation', {
+        recipient_id: recipientId
+    });
+
+    if (error) throw error;
+    return data.toString();
 }
 
 // Existing functions

@@ -1,65 +1,158 @@
-
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Button from '../components/ui/Button';
-
-const mockConversations = [
-    { id: 1, name: 'PackPro', lastMessage: 'Yes, that sounds great. I will send the proof...', time: '5m ago', unread: 2 },
-    { id: 2, name: 'Boxify', lastMessage: 'Your order #YBX-1002 has entered production.', time: '1h ago', unread: 0 },
-    { id: 3, name: 'PouchMasters', lastMessage: 'Do you have the design in a vector format?', time: '3d ago', unread: 0 },
-]
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import { useAuth } from '../hooks/useAuth';
+import { getConversations, getMessages, sendMessage } from '../lib/api';
+import { supabase } from '../lib/supabaseClient';
+import type { Conversation, Message } from '../types';
+import { useToast } from '../hooks/useToast';
 
 const MessagesPage: React.FC = () => {
+    const { user } = useAuth();
+    const { addToast } = useToast();
+    const [searchParams, setSearchParams] = useSearchParams();
+    
+    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [newMessage, setNewMessage] = useState('');
+
+    const [loadingConversations, setLoadingConversations] = useState(true);
+    const [loadingMessages, setLoadingMessages] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const fetchConversations = async () => {
+            setLoadingConversations(true);
+            try {
+                const convos = await getConversations();
+                setConversations(convos);
+                const preselectId = searchParams.get('conversationId');
+                if (preselectId) {
+                    const foundConvo = convos.find(c => c.id === preselectId);
+                    if (foundConvo) setSelectedConversation(foundConvo);
+                }
+            } catch (err) {
+                addToast("Failed to load conversations.", 'error');
+            } finally {
+                setLoadingConversations(false);
+            }
+        };
+
+        fetchConversations();
+    }, [addToast, searchParams]);
+
+    useEffect(() => {
+        const fetchMessages = async () => {
+            if (!selectedConversation) return;
+            setLoadingMessages(true);
+            try {
+                const msgs = await getMessages(selectedConversation.id);
+                setMessages(msgs);
+            } catch (err) {
+                addToast("Failed to load messages.", 'error');
+            } finally {
+                setLoadingMessages(false);
+            }
+        };
+        fetchMessages();
+        
+        // Subscribe to realtime updates for new messages
+        const channel = supabase?.channel(`messages:${selectedConversation.id}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${selectedConversation.id}` }, payload => {
+                setMessages(currentMessages => [...currentMessages, payload.new as Message]);
+            })
+            .subscribe();
+
+        return () => {
+            supabase?.removeChannel(channel!);
+        };
+
+    }, [selectedConversation, addToast]);
+    
+     useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    const handleSendMessage = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !selectedConversation) return;
+
+        try {
+            setNewMessage('');
+            await sendMessage(selectedConversation.id, newMessage);
+        } catch (error) {
+            addToast("Failed to send message.", 'error');
+            setNewMessage(newMessage); // put message back in input on error
+        }
+    };
+    
+    const formatTime = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white mb-8">Messages</h1>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 h-[70vh]">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 h-[70vh] border border-gray-200 dark:border-gray-700 rounded-lg shadow-md">
                 {/* Conversation List */}
-                <div className="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-y-auto">
-                    <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {mockConversations.map(conv => (
-                             <li key={conv.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer flex justify-between items-start">
-                                 <div>
-                                    <p className="font-semibold">{conv.name}</p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{conv.lastMessage}</p>
-                                 </div>
-                                 <div className="text-right flex-shrink-0 ml-2">
-                                     <p className="text-xs text-gray-400">{conv.time}</p>
-                                     {conv.unread > 0 && <span className="mt-1 inline-block bg-indigo-600 text-white text-xs font-bold rounded-full px-2 py-1">{conv.unread}</span>}
-                                 </div>
-                             </li>
-                        ))}
-                    </ul>
+                <div className="md:col-span-1 bg-white dark:bg-gray-800 rounded-l-lg overflow-y-auto border-r border-gray-200 dark:border-gray-700">
+                    {loadingConversations ? <LoadingSpinner /> : (
+                         <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {conversations.map(conv => (
+                                <li key={conv.id} onClick={() => setSelectedConversation(conv)} 
+                                    className={`p-4 cursor-pointer flex justify-between items-start ${selectedConversation?.id === conv.id ? 'bg-indigo-50 dark:bg-indigo-900/50' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                                    <div>
+                                        <p className="font-semibold">{conv.other_user.name}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate w-48">{conv.last_message?.content || 'No messages yet'}</p>
+                                    </div>
+                                    {conv.last_message && (
+                                        <div className="text-right flex-shrink-0 ml-2">
+                                            <p className="text-xs text-gray-400">{formatTime(conv.last_message.created_at)}</p>
+                                        </div>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
                 {/* Chat Panel */}
-                <div className="md:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md flex flex-col">
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                        <h2 className="text-xl font-bold">PackPro</h2>
-                        <p className="text-sm text-gray-500">Regarding order #YBX-1001</p>
-                    </div>
-                    <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-                        {/* Messages */}
-                        <div className="flex justify-start">
-                            <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg max-w-xs">
-                                <p>Hi! Can you confirm the dimensions for the mailer box?</p>
+                <div className="md:col-span-2 bg-white dark:bg-gray-800 rounded-r-lg flex flex-col">
+                    {selectedConversation ? (
+                        <>
+                            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                                <h2 className="text-xl font-bold">{selectedConversation.other_user.name}</h2>
                             </div>
-                        </div>
-                        <div className="flex justify-end">
-                            <div className="bg-indigo-600 text-white p-3 rounded-lg max-w-xs">
-                                <p>Of course. We have it as 10x8x4 inches as per the product page. Is that correct?</p>
+                            <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+                               {loadingMessages ? <LoadingSpinner/> : messages.map(msg => (
+                                    <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`${msg.sender_id === user?.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700'} p-3 rounded-lg max-w-xs`}>
+                                            <p>{msg.content}</p>
+                                            <p className={`text-xs mt-1 ${msg.sender_id === user?.id ? 'text-indigo-200' : 'text-gray-400'}`}>{formatTime(msg.created_at)}</p>
+                                        </div>
+                                    </div>
+                               ))}
+                               <div ref={messagesEndRef} />
                             </div>
+                            <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200 dark:border-gray-700">
+                                <div className="flex items-center space-x-4">
+                                    <input 
+                                        type="text" 
+                                        value={newMessage}
+                                        onChange={e => setNewMessage(e.target.value)}
+                                        placeholder="Type your message..." 
+                                        className="flex-1 border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-indigo-500 focus:border-indigo-500" />
+                                    <Button type="submit">Send</Button>
+                                </div>
+                            </form>
+                        </>
+                    ) : (
+                        <div className="flex items-center justify-center h-full">
+                            <p className="text-gray-500">Select a conversation to start chatting.</p>
                         </div>
-                        <div className="flex justify-start">
-                            <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg max-w-xs">
-                                <p>Yes, that sounds great. I will send the proof over shortly for your approval.</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center space-x-4">
-                            <input type="text" placeholder="Type your message..." className="flex-1 border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" />
-                            <Button>Send</Button>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>

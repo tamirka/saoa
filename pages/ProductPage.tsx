@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import FileUploader from '../components/ui/FileUploader';
 import { StarIcon } from '../components/ui/Icons';
 import type { Review, Product } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useToast } from '../hooks/useToast';
-import { getProductById } from '../lib/api';
+import { getProductById, getOrCreateConversation } from '../lib/api';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const StarRating: React.FC<{ rating: number }> = ({ rating }) => {
@@ -34,9 +34,11 @@ const ReviewItem: React.FC<{ review: Review }> = ({ review }) => {
 
 const ProductPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isContacting, setIsContacting] = useState(false);
 
   const [selectedImage, setSelectedImage] = useState<string | undefined>();
   const [quantity, setQuantity] = useState(100);
@@ -70,6 +72,20 @@ const ProductPage: React.FC = () => {
     };
     fetchProduct();
   }, [id]);
+
+  const handleContactSeller = async () => {
+    if (!product?.seller.id) return;
+    setIsContacting(true);
+    try {
+      const conversationId = await getOrCreateConversation(product.seller.id);
+      navigate(`/messages?conversationId=${conversationId}`);
+    } catch (err) {
+      addToast('Could not start conversation.', 'error');
+      console.error(err);
+    } finally {
+      setIsContacting(false);
+    }
+  };
 
   if (loading) {
     return <div className="flex justify-center items-center h-96"><LoadingSpinner /></div>;
@@ -158,7 +174,9 @@ const ProductPage: React.FC = () => {
 
             {/* Action Buttons */}
             <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Button size="lg" variant="secondary">Contact Seller</Button>
+                <Button size="lg" variant="secondary" onClick={handleContactSeller} disabled={isContacting}>
+                  {isContacting ? 'Opening...' : 'Contact Seller'}
+                </Button>
                 <Button size="lg" variant="primary" onClick={handleAddToCart}>Add to Cart</Button>
             </div>
           </div>
