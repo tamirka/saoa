@@ -5,6 +5,25 @@ import { fetchUserProfile } from '../lib/auth';
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const RETRY_DELAY = 500;
+const MAX_RETRIES = 3;
+
+const fetchProfileWithRetries = async (userId: string, email: string, retries = MAX_RETRIES): Promise<User | null> => {
+    const profile = await fetchUserProfile(userId, email);
+    if (profile) {
+        return profile;
+    }
+    if (retries > 0) {
+        // Wait and retry. This is crucial for the race condition after signup
+        // where the profile might not have been created by the trigger yet.
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return fetchProfileWithRetries(userId, email, retries - 1);
+    }
+    // If it's still null, it's a genuine problem.
+    console.error(`Failed to fetch profile for user ${userId} after ${MAX_RETRIES} retries.`);
+    return null;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -13,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
-                const profile = await fetchUserProfile(session.user.id, session.user.email!);
+                const profile = await fetchProfileWithRetries(session.user.id, session.user.email!);
                 setUser(profile);
             }
             setIsLoading(false);
@@ -23,7 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_IN' && session?.user) {
-                 const profile = await fetchUserProfile(session.user.id, session.user.email!);
+                 const profile = await fetchProfileWithRetries(session.user.id, session.user.email!);
                  setUser(profile);
             } else if (event === 'SIGNED_OUT') {
                 setUser(null);

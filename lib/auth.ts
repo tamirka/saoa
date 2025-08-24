@@ -119,10 +119,15 @@ export const fetchUserProfile = async (userId: string, email: string): Promise<U
         .from('profiles')
         .select('full_name, role')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
     
-    if (error || !data) {
+    if (error) {
         console.error("Error fetching profile on auth change:", error);
+        return null;
+    }
+
+    if (!data) {
+        // Profile not found, not necessarily an error. AuthContext will handle retries.
         return null;
     }
 
