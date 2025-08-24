@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getConversations, getMessages, sendMessage, markConversationAsRead } from '../lib/api';
 import type { Conversation, Message } from '../types';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { useToast } from '../../hooks/useToast';
+import { useToast } from '../hooks/useToast';
 
 const MessagesPage: React.FC = () => {
     const { user } = useAuth();
