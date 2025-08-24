@@ -41,12 +41,13 @@ CREATE TABLE profiles (
 );
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- Allow users to view their own profile
-CREATE POLICY "Users can view their own profile." ON profiles FOR SELECT USING ( auth.uid() = id );
+-- This new, single policy is more robust and prevents race conditions on login.
+CREATE POLICY "Authenticated users can view profiles." ON profiles FOR SELECT
+TO authenticated
+USING (true);
+
 -- Allow users to update their own profile
 CREATE POLICY "Users can update their own profile." ON profiles FOR UPDATE USING ( auth.uid() = id );
--- Allow anyone to view any profile (needed for seller info on products)
-CREATE POLICY "Anyone can view profiles." ON profiles FOR SELECT USING (true);
 
 
 -- This trigger automatically creates a profile entry when a new user signs up

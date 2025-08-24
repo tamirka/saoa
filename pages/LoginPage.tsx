@@ -4,6 +4,7 @@ import Button from '../components/ui/Button';
 import { Logo } from '../components/ui/Icons';
 import { useAuth } from '../hooks/useAuth';
 import { signInWithEmail } from '../lib/auth';
+import { hasSellerProfile } from '../lib/api';
 
 const LoginPage: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -11,18 +12,30 @@ const LoginPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
-    const { isAuthenticated, user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
 
     useEffect(() => {
-        if (isAuthenticated) {
-            // Redirect sellers without a profile to onboarding
-            if(user?.role === 'seller') {
-                 // A more robust check would see if a seller profile exists in the `sellers` table
-                 // For now, we assume a new seller needs onboarding.
-            }
-            navigate('/dashboard', { replace: true });
+        // Don't do anything while auth is still loading or if there's no user
+        if (authLoading || !user) {
+            return;
         }
-    }, [isAuthenticated, user, navigate]);
+
+        const handleRedirect = async () => {
+            if (user.role === 'buyer') {
+                navigate('/dashboard', { replace: true });
+            } else if (user.role === 'seller') {
+                const sellerExists = await hasSellerProfile(user.id);
+                if (sellerExists) {
+                    navigate('/dashboard/my-products', { replace: true });
+                } else {
+                    navigate('/seller-onboarding', { replace: true });
+                }
+            }
+        };
+
+        handleRedirect();
+
+    }, [user, authLoading, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -36,11 +49,10 @@ const LoginPage: React.FC = () => {
         setIsLoading(true);
         try {
             await signInWithEmail(email, password);
-            // The useEffect will handle the redirect
+            // The useEffect hook will now handle the redirect once the AuthContext is updated.
         } catch (err: any) {
             setError(err.message || "Failed to sign in.");
-        } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Only stop loading on error
         }
     };
 

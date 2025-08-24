@@ -75,6 +75,21 @@ export const getProductById = async (id: string): Promise<(Product & { product_v
 // SELLERS
 // =============================================
 
+export const hasSellerProfile = async (userId: string): Promise<boolean> => {
+    const { data, error } = await supabase
+        .from('sellers')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error checking for seller profile:', error);
+        return false;
+    }
+
+    return !!data;
+};
+
 export const createSellerProfile = async (userId: string, profileData: any, logoFile: File) => {
     // 1. Upload logo
     const filePath = `${userId}/${logoFile.name}`;
