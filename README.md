@@ -41,7 +41,7 @@ CREATE TABLE profiles (
 );
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- This new, single policy is more robust and prevents race conditions on login.
+-- This new, single policy is robust and prevents race conditions on login.
 CREATE POLICY "Authenticated users can view profiles." ON profiles FOR SELECT
 TO authenticated
 USING (true);
@@ -51,6 +51,7 @@ CREATE POLICY "Users can update their own profile." ON profiles FOR UPDATE USING
 
 
 -- This trigger automatically creates a profile entry when a new user signs up
+-- It correctly pulls the 'role' from the metadata provided during sign-up.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -61,6 +62,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Link the trigger to the auth.users table
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();

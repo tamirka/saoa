@@ -10,7 +10,6 @@ const LoginPage: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
     const { user, loading: authLoading } = useAuth();
 
@@ -46,13 +45,13 @@ const LoginPage: React.FC = () => {
             return;
         }
 
-        setIsLoading(true);
         try {
+            // signInWithEmail will trigger the onAuthStateChange listener in AuthContext.
+            // The AuthContext will then handle the loading state and user fetching.
             await signInWithEmail(email, password);
             // The useEffect hook will now handle the redirect once the AuthContext is updated.
         } catch (err: any) {
             setError(err.message || "Failed to sign in.");
-            setIsLoading(false); // Only stop loading on error
         }
     };
 
@@ -121,8 +120,8 @@ const LoginPage: React.FC = () => {
                     </div>
 
                     <div>
-                        <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-                            {isLoading ? 'Signing In...' : 'Sign in'}
+                        <Button type="submit" className="w-full" size="lg" disabled={authLoading}>
+                            {authLoading ? 'Signing In...' : 'Sign in'}
                         </Button>
                     </div>
                 </form>
