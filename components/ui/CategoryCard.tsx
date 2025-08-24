@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import type { Category } from '../../types';
@@ -8,11 +7,14 @@ interface CategoryCardProps {
 }
 
 const CategoryCard: React.FC<CategoryCardProps> = ({ category }) => {
+    // Using a placeholder as the DB schema for category doesn't have an image
+    const placeholderImageUrl = `https://via.placeholder.com/400x400.png/a8a8f0/ffffff?text=${category.name}`;
+    
     return (
-        <Link to="/browse" className="group relative block">
+        <Link to={`/browse?category=${category.id}`} className="group relative block">
             <div className="relative h-48 w-full overflow-hidden rounded-lg bg-white sm:aspect-h-1 sm:aspect-w-2 lg:aspect-h-1 lg:aspect-w-1 group-hover:opacity-75 sm:h-64">
                 <img
-                    src={category.imageUrl}
+                    src={placeholderImageUrl}
                     alt={category.name}
                     className="h-full w-full object-cover object-center"
                 />

@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useMemo } from 'react';
 import type { CartItem, Product, ProductVariant } from '../types';
 
@@ -58,7 +57,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateQuantity = (itemId: string, quantity: number) => {
     setCartItems(prevItems =>
       prevItems.map(item =>
-        item.id === itemId ? { ...item, quantity: Math.max(item.product.minOrderQuantity, quantity) } : item
+        item.id === itemId ? { ...item, quantity: Math.max(item.product.min_order_quantity, quantity) } : item
       )
     );
   };

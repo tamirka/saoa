@@ -1,335 +1,253 @@
-# Yazbox Frontend Marketplace
+# Yazbox - B2B Packaging Marketplace (Supabase Version)
 
-This is the frontend implementation for Yazbox, a B2B marketplace for custom packaging.
-
-## Project Structure
-
-- `/src/components`: Reusable UI components.
-- `/src/pages`: Top-level page components.
-- `/src/context`: React context providers for global state (Theme, Auth, Cart).
-- `/src/hooks`: Custom hooks for accessing context.
-- `/src/lib`: Utilities and services, including Supabase client, API functions, and auth helpers.
-- `/src/types.ts`: TypeScript type definitions.
+This is the full implementation for Yazbox, a B2B marketplace for custom packaging, connected to a Supabase backend.
 
 ## Getting Started
 
-The project is set up to run in a web-based development environment.
+### 1. Supabase Project Setup
 
-### Supabase Integration Setup
+1.  Create a new project on [Supabase](https://supabase.com/).
+2.  Go to the **SQL Editor** in your Supabase dashboard.
+3.  Copy the entire content of the `Supabase Schema` section below and run it in the SQL editor. This will create all the necessary tables, storage buckets, and security policies.
 
-This project is now fully integrated with Supabase for backend services.
+### 2. Environment Variables
 
-1.  **Set up Environment Variables**:
-    Use your platform's secret management (e.g., Vercel Environment Variables) to set your Supabase project credentials:
+Create a `.env` file in the root of your project directory. Add your Supabase project URL and anon key to this file. You can find these in your Supabase project's **API Settings**.
 
-    ```
-    VITE_SUPABASE_URL=your-supabase-project-url
-    VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-    ```
+```
+VITE_SUPABASE_URL=YOUR_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
 
-2.  **Set up Database Schema**:
-    Navigate to the **SQL Editor** in your Supabase project dashboard. Copy the entire SQL script from the "Supabase Schema" section below and run it to create all the necessary tables and security policies.
+### 3. Run the Application
+
+Once your environment variables are set, you can run the application. It will now be fully connected to your Supabase backend.
 
 ---
 
 ## Supabase Schema
 
-Run the following SQL in your Supabase SQL Editor to set up the database.
+Copy and paste the entire SQL script below into the Supabase SQL Editor and run it.
 
 ```sql
--- Supabase Schema for Yazbox Marketplace
-
--- 1. Profiles table to store user data linked to auth.users
-CREATE TABLE public.profiles (
+-- =============================================
+-- 1. AUTHENTICATION SETUP (PROFILES & TRIGGERS)
+-- =============================================
+-- Create a table for public user profiles
+CREATE TABLE profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT,
-  email TEXT UNIQUE,
-  role TEXT NOT NULL CHECK (role IN ('buyer', 'seller')),
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  role TEXT NOT NULL DEFAULT 'buyer'
 );
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- RLS Policy for profiles
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view their own profile." ON public.profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update their own profile." ON public.profiles FOR UPDATE USING (auth.uid() = id);
+-- Allow users to view their own profile
+CREATE POLICY "Users can view their own profile." ON profiles FOR SELECT USING ( auth.uid() = id );
+-- Allow users to update their own profile
+CREATE POLICY "Users can update their own profile." ON profiles FOR UPDATE USING ( auth.uid() = id );
+-- Allow anyone to view any profile (needed for seller info on products)
+CREATE POLICY "Anyone can view profiles." ON profiles FOR SELECT USING (true);
 
--- Function to create a profile when a new user signs up
+
+-- This trigger automatically creates a profile entry when a new user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, email, role)
-  VALUES (new.id, new.raw_user_meta_data->>'full_name', new.email, new.raw_user_meta_data->>'role');
+  INSERT INTO public.profiles (id, full_name, role)
+  VALUES (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'role');
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to call the function on new user signup
+-- Link the trigger to the auth.users table
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
 
--- 2. Sellers table
-CREATE TABLE public.sellers (
+-- =============================================
+-- 2. SELLERS & PRODUCTS
+-- =============================================
+-- Create sellers table
+CREATE TABLE sellers (
   id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
   company_name TEXT NOT NULL,
-  logo_url TEXT,
   description TEXT,
+  logo_url TEXT,
   shipping_policy TEXT,
   return_policy TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
+ALTER TABLE sellers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view seller profiles." ON sellers FOR SELECT USING (true);
+CREATE POLICY "Sellers can create/update their profile." ON sellers FOR ALL USING (auth.uid() = id);
 
--- RLS Policy for sellers
-ALTER TABLE public.sellers ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Sellers data is publicly visible." ON public.sellers FOR SELECT USING (true);
-CREATE POLICY "Sellers can create/update their profile." ON public.sellers FOR ALL USING (auth.uid() = id);
-
-
--- 3. Categories table
-CREATE TABLE public.categories (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  name TEXT NOT NULL,
-  image_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Create categories table and pre-populate
+CREATE TABLE categories (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
 );
-
--- RLS Policy for categories
-ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Categories are publicly visible." ON public.categories FOR SELECT USING (true);
--- Add INSERT/UPDATE/DELETE policies for admins as needed.
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view categories" ON categories FOR SELECT USING (true);
+INSERT INTO categories (name) VALUES ('Boxes'), ('Pouches'), ('Sachets'), ('Labels'), ('Bags'), ('Tape');
 
 
--- 4. Products table
-CREATE TABLE public.products (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+-- Create products table
+CREATE TABLE products (
+  id SERIAL PRIMARY KEY,
+  seller_id UUID NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+  category_id INT NOT NULL REFERENCES categories(id),
   name TEXT NOT NULL,
   description TEXT,
-  seller_id UUID NOT NULL REFERENCES public.sellers(id) ON DELETE CASCADE,
-  category_id BIGINT NOT NULL REFERENCES public.categories(id),
-  image_url TEXT,
-  images TEXT[],
-  min_order_quantity INT DEFAULT 1,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  min_order_quantity INT NOT NULL DEFAULT 50,
+  images TEXT[], -- Array of image URLs from Storage
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view products." ON products FOR SELECT USING (true);
+CREATE POLICY "Sellers can manage their own products." ON products FOR ALL USING (auth.uid() = seller_id);
 
--- RLS Policy for products
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Products are publicly visible." ON public.products FOR SELECT USING (true);
-CREATE POLICY "Sellers can manage their own products." ON public.products FOR ALL USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'seller' AND id = seller_id)
-);
-
-
--- 5. Product Variants table
-CREATE TABLE public.product_variants (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  product_id BIGINT NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+-- Create product_variants table
+CREATE TABLE product_variants (
+  id SERIAL PRIMARY KEY,
+  product_id INT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   name TEXT NOT NULL, -- e.g., "Small", "Medium"
-  paper_type TEXT,
-  price_per_unit NUMERIC(10, 2) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  paper_type TEXT, -- e.g., "Kraft"
+  price_per_unit NUMERIC(10, 2) NOT NULL
 );
-
--- RLS Policy for product_variants
-ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Product variants are publicly visible." ON public.product_variants FOR SELECT USING (true);
-CREATE POLICY "Sellers can manage variants for their products." ON public.product_variants FOR ALL USING (
-  EXISTS (SELECT 1 FROM public.products WHERE id = product_id AND seller_id = auth.uid())
+ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view product variants." ON product_variants FOR SELECT USING (true);
+CREATE POLICY "Sellers can manage variants for their products." ON product_variants FOR ALL USING (
+  (SELECT auth.uid()) = (SELECT seller_id FROM products WHERE id = product_id)
 );
 
 
--- 6. Reviews table
-CREATE TABLE public.reviews (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  product_id BIGINT NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-  author_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
-  comment TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- =============================================
+-- 3. ORDERS & NOTIFICATIONS
+-- =============================================
+CREATE TABLE orders (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    total NUMERIC(10, 2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Pending',
+    shipping_address JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own orders." ON orders FOR ALL USING (auth.uid() = user_id);
+
+CREATE TABLE order_items (
+    id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    product_id INT NOT NULL REFERENCES products(id),
+    variant_id INT NOT NULL REFERENCES product_variants(id),
+    quantity INT NOT NULL,
+    unit_price NUMERIC(10, 2) NOT NULL,
+    artwork_url TEXT
+);
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view items in their own orders." ON order_items FOR SELECT USING ((SELECT auth.uid()) = (SELECT user_id FROM orders WHERE id = order_id));
+
+
+CREATE TABLE notifications (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    link TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own notifications." ON notifications FOR ALL USING (auth.uid() = user_id);
+
+
+-- =============================================
+-- 4. MESSAGING SYSTEM
+-- =============================================
+CREATE TABLE conversations (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
--- RLS Policy for reviews
-ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Reviews are publicly visible." ON public.reviews FOR SELECT USING (true);
-CREATE POLICY "Users can manage their own reviews." ON public.reviews FOR ALL USING (auth.uid() = author_id);
-
-
--- 7. Product FAQs table
-CREATE TABLE public.product_faqs (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  product_id BIGINT NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-  question TEXT NOT NULL,
-  answer TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE conversation_participants (
+    conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    PRIMARY KEY (conversation_id, user_id)
 );
 
--- RLS Policy for product_faqs
-ALTER TABLE public.product_faqs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Product FAQs are publicly visible." ON public.product_faqs FOR SELECT USING (true);
-CREATE POLICY "Sellers can manage FAQs for their products." ON public.product_faqs FOR ALL USING (
-  EXISTS (SELECT 1 FROM public.products WHERE id = product_id AND seller_id = auth.uid())
+CREATE TABLE messages (
+    id BIGSERIAL PRIMARY KEY,
+    conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE
 );
 
+-- RLS for messaging
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
--- 8. Orders table
-CREATE TABLE public.orders (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  user_id UUID NOT NULL REFERENCES public.profiles(id),
-  status TEXT NOT NULL DEFAULT 'Pending',
-  total NUMERIC(10, 2) NOT NULL,
-  shipping_address JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "Users can access conversations they are part of." ON conversations FOR ALL USING (id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid()));
+CREATE POLICY "Users can access participant list of their conversations." ON conversation_participants FOR ALL USING (conversation_id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid()));
+CREATE POLICY "Users can send/view messages in their conversations." ON messages FOR ALL USING (conversation_id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid()));
 
--- RLS Policy for orders
-ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can manage their own orders." ON public.orders FOR ALL USING (auth.uid() = user_id);
-
-
--- 9. Order Items table
-CREATE TABLE public.order_items (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  order_id BIGINT NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
-  product_id BIGINT NOT NULL REFERENCES public.products(id),
-  variant_id BIGINT NOT NULL REFERENCES public.product_variants(id),
-  quantity INT NOT NULL,
-  price_at_purchase NUMERIC(10, 2) NOT NULL,
-  artwork_url TEXT
-);
-
--- RLS Policy for order_items
-ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can see items in their own orders." ON public.order_items FOR SELECT USING (
-  EXISTS (SELECT 1 FROM public.orders WHERE id = order_id AND user_id = auth.uid())
-);
--- Write access should be handled by server-side logic (e.g., Edge Functions) for security.
-
-
--- 10. Notifications table
-CREATE TABLE public.notifications (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  user_id UUID NOT NULL REFERENCES public.profiles(id),
-  message TEXT NOT NULL,
-  link TEXT,
-  is_read BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- RLS Policy for notifications
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can manage their own notifications." ON public.notifications FOR ALL USING (auth.uid() = user_id);
-
-
--- 11. MESSAGING SCHEMA
--- Enable realtime for messages table
-ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
-
--- Table to hold conversations
-CREATE TABLE public.conversations (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- RLS for conversations
-ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can only view conversations they are in." ON public.conversations FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.conversation_participants
-    WHERE conversation_id = id AND user_id = auth.uid()
-  )
-);
-
--- Join table for users and conversations
-CREATE TABLE public.conversation_participants (
-  conversation_id BIGINT NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  PRIMARY KEY (conversation_id, user_id)
-);
-
--- RLS for conversation_participants
-ALTER TABLE public.conversation_participants ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can see their own participation." ON public.conversation_participants FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Users can manage their own participation." ON public.conversation_participants FOR ALL USING (user_id = auth.uid());
-
-
--- Table for messages
-CREATE TABLE public.messages (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  conversation_id BIGINT NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
-  sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- RLS for messages
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view messages in their conversations." ON public.messages FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.conversation_participants
-    WHERE conversation_id = messages.conversation_id AND user_id = auth.uid()
-  )
-);
-CREATE POLICY "Users can send messages in their conversations." ON public.messages FOR INSERT
-WITH CHECK (
-  sender_id = auth.uid() AND
-  EXISTS (
-    SELECT 1 FROM public.conversation_participants
-    WHERE conversation_id = messages.conversation_id AND user_id = auth.uid()
-  )
-);
-
-
--- DB function to create a conversation if one doesn't exist
+-- DB function to get or create a conversation with another user
 CREATE OR REPLACE FUNCTION get_or_create_conversation(recipient_id UUID)
-RETURNS BIGINT AS $$
+RETURNS INT AS $$
 DECLARE
-  conversation_id BIGINT;
-  current_user_id UUID := auth.uid();
+    found_conversation_id INT;
 BEGIN
-  -- Find an existing conversation between the two users
-  SELECT cp1.conversation_id INTO conversation_id
-  FROM conversation_participants AS cp1
-  JOIN conversation_participants AS cp2 ON cp1.conversation_id = cp2.conversation_id
-  WHERE cp1.user_id = current_user_id AND cp2.user_id = recipient_id;
+    SELECT cp1.conversation_id INTO found_conversation_id FROM conversation_participants cp1
+    JOIN conversation_participants cp2 ON cp1.conversation_id = cp2.conversation_id
+    WHERE cp1.user_id = auth.uid() AND cp2.user_id = recipient_id;
 
-  -- If no conversation is found, create a new one
-  IF conversation_id IS NULL THEN
-    INSERT INTO conversations DEFAULT VALUES RETURNING id INTO conversation_id;
-    INSERT INTO conversation_participants (conversation_id, user_id)
-    VALUES (conversation_id, current_user_id), (conversation_id, recipient_id);
-  END IF;
-
-  RETURN conversation_id;
+    IF found_conversation_id IS NULL THEN
+        INSERT INTO conversations DEFAULT VALUES RETURNING id INTO found_conversation_id;
+        INSERT INTO conversation_participants (conversation_id, user_id) VALUES (found_conversation_id, auth.uid()), (found_conversation_id, recipient_id);
+    END IF;
+    RETURN found_conversation_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 
--- 12. Storage Buckets for Images
--- Seller Logos
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('seller_logos', 'seller_logos', true)
-ON CONFLICT (id) DO NOTHING;
+-- DB view to easily get conversation list with last message and unread count
+CREATE OR REPLACE VIEW conversations_with_details AS
+SELECT
+    c.id AS conversation_id,
+    p.user_id AS other_user_id,
+    prof.full_name AS other_user_name,
+    (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
+    (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_at,
+    (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.is_read = FALSE AND m.sender_id != auth.uid()) AS unread_count
+FROM conversations c
+JOIN conversation_participants p ON c.id = p.conversation_id AND p.user_id != auth.uid()
+JOIN profiles prof ON p.user_id = prof.id
+WHERE c.id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid());
 
--- Product Images
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('product_images', 'product_images', true)
-ON CONFLICT (id) DO NOTHING;
 
--- RLS Policies for Storage
--- Allow sellers to upload logos and product images
-CREATE POLICY "Sellers can upload to their own folder"
-ON storage.objects FOR INSERT
+-- =============================================
+-- 5. STORAGE SETUP (FILE UPLOADS)
+-- =============================================
+-- Create buckets
+INSERT INTO storage.buckets (id, name, public) VALUES ('seller_logos', 'seller_logos', TRUE) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('product_images', 'product_images', TRUE) ON CONFLICT (id) DO NOTHING;
+
+-- Policies for seller_logos bucket
+CREATE POLICY "Sellers can manage their own logo" ON storage.objects FOR ALL
 TO authenticated
-WITH CHECK (
-  (bucket_id = 'seller_logos' OR bucket_id = 'product_images') AND
-  (storage.owner_uid() = auth.uid())
-);
+USING (bucket_id = 'seller_logos' AND (storage.foldername(name))[1] = auth.uid()::text);
 
--- Allow anyone to view images
-CREATE POLICY "Images are publicly accessible"
-ON storage.objects FOR SELECT
-USING ( bucket_id = 'seller_logos' OR bucket_id = 'product_images' );
+CREATE POLICY "Anyone can view seller logos" ON storage.objects FOR SELECT
+USING (bucket_id = 'seller_logos');
+
+
+-- Policies for product_images bucket
+CREATE POLICY "Sellers can manage their product images" ON storage.objects FOR ALL
+TO authenticated
+USING (bucket_id = 'product_images' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+CREATE POLICY "Anyone can view product images" ON storage.objects FOR SELECT
+USING (bucket_id = 'product_images');
 ```

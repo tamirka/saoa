@@ -1,65 +1,70 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ProductCard from '../components/ui/ProductCard';
 import { SearchIcon, ChevronDownIcon } from '../components/ui/Icons';
+import { getAllProducts, getCategories } from '../lib/api';
 import type { Product, Category } from '../types';
-import { getProducts, getCategories } from '../lib/api';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-
 
 const BrowseProductsPage: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
+    
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+    const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
     const [maxMoq, setMaxMoq] = useState(1000);
     const [sortBy, setSortBy] = useState('popularity');
 
-    useEffect(() => {
-        const fetchPageData = async () => {
-            try {
-                const categoriesData = await getCategories();
-                setCategories(categoriesData);
-            } catch (err) {
-                setError('Failed to load filters.');
-            }
-        };
-        fetchPageData();
-    }, []);
-
-    useEffect(() => {
-        const fetchProducts = async () => {
+    const fetchProducts = useCallback(async () => {
+        try {
             setLoading(true);
-            setError(null);
+            const filters = {
+                searchTerm,
+                categories: selectedCategories,
+                maxMoq,
+                sortBy,
+            };
+            const fetchedProducts = await getAllProducts(filters);
+            setProducts(fetchedProducts);
+        } catch (err) {
+            setError('Could not load products.');
+        } finally {
+            setLoading(false);
+        }
+    }, [searchTerm, selectedCategories, maxMoq, sortBy]);
+    
+    useEffect(() => {
+        const fetchInitialData = async () => {
             try {
-                const productsData = await getProducts({
-                    searchTerm,
-                    categories: selectedCategories,
-                    maxMoq,
-                    sortBy,
-                });
-                setProducts(productsData);
+                const fetchedCategories = await getCategories();
+                setCategories(fetchedCategories);
+                await fetchProducts();
             } catch (err) {
-                setError('Failed to load products. Please try again.');
-            } finally {
-                setLoading(false);
+                setError('Could not load filters.');
             }
         };
-
-        const debounce = setTimeout(() => {
+        fetchInitialData();
+    }, []); // Empty dependency array for initial load
+    
+    // This effect re-runs the search when filters change
+    useEffect(() => {
+        // We use a timeout to debounce the search input
+        const handler = setTimeout(() => {
             fetchProducts();
-        }, 300); // Debounce search input
+        }, 500); // 500ms delay
 
-        return () => clearTimeout(debounce);
-    }, [searchTerm, selectedCategories, maxMoq, sortBy]);
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [searchTerm, selectedCategories, maxMoq, sortBy, fetchProducts]);
 
-    const handleCategoryChange = (categoryName: string) => {
+
+    const handleCategoryChange = (categoryId: number) => {
         setSelectedCategories(prev =>
-            prev.includes(categoryName)
-                ? prev.filter(name => name !== categoryName)
-                : [...prev, categoryName]
+            prev.includes(categoryId)
+                ? prev.filter(id => id !== categoryId)
+                : [...prev, categoryId]
         );
     };
 
@@ -102,7 +107,7 @@ const BrowseProductsPage: React.FC = () => {
                                     <div className="mt-2 space-y-2">
                                         {categories.map(category => (
                                             <div key={category.id} className="flex items-center">
-                                                <input id={category.name} name="category[]" type="checkbox" onChange={() => handleCategoryChange(category.name)} className="h-4 w-4 border-gray-300 rounded text-indigo-600 focus:ring-indigo-500" />
+                                                <input id={category.name} name="category[]" type="checkbox" onChange={() => handleCategoryChange(category.id)} className="h-4 w-4 border-gray-300 rounded text-indigo-600 focus:ring-indigo-500" />
                                                 <label htmlFor={category.name} className="ml-3 text-sm text-gray-600 dark:text-gray-300">{category.name}</label>
                                             </div>
                                         ))}
@@ -139,14 +144,14 @@ const BrowseProductsPage: React.FC = () => {
                              </div>
                          </div>
                         
-                        {loading ? <LoadingSpinner /> : error ? <p className="text-center text-red-500 mt-4">{error}</p> : (
+                        {loading ? <LoadingSpinner /> : error ? <p className="text-center text-red-500">{error}</p> : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-10">
                                 {products.map(product => (
                                     <ProductCard key={product.id} product={product} />
                                 ))}
                             </div>
                         )}
-
+                       
                          {/* Pagination (Static) */}
                         <nav className="mt-12 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 px-4 sm:px-0">
                             <div className="flex-1 flex justify-between sm:justify-end pt-4">

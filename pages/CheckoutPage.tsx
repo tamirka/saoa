@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Button from '../components/ui/Button';
@@ -8,7 +7,7 @@ const CheckoutPage: React.FC = () => {
     const [step, setStep] = useState(1);
     const { cartItems } = useCart();
     
-    const subtotal = cartItems.reduce((acc, item) => acc + item.quantity * item.selectedVariant.pricePerUnit, 0);
+    const subtotal = cartItems.reduce((acc, item) => acc + item.quantity * item.selectedVariant.price_per_unit, 0);
     const total = subtotal + 50.00 + (subtotal * 0.08); // Mock shipping and tax
 
     if (step === 3) {
@@ -74,12 +73,12 @@ const CheckoutPage: React.FC = () => {
                             <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                                 {cartItems.map(item => (
                                     <li key={item.id} className="py-4 flex items-center">
-                                        <img src={item.product.imageUrl} alt={item.product.name} className="h-16 w-16 rounded-md object-cover" />
+                                        <img src={item.product.images[0]} alt={item.product.name} className="h-16 w-16 rounded-md object-cover" />
                                         <div className="ml-4 flex-1">
                                             <p className="font-medium">{item.product.name}</p>
-                                            <p className="text-sm text-gray-500">{item.quantity} x ${item.selectedVariant.pricePerUnit.toFixed(2)}</p>
+                                            <p className="text-sm text-gray-500">{item.quantity} x ${item.selectedVariant.price_per_unit.toFixed(2)}</p>
                                         </div>
-                                        <p className="font-medium">${(item.quantity * item.selectedVariant.pricePerUnit).toFixed(2)}</p>
+                                        <p className="font-medium">${(item.quantity * item.selectedVariant.price_per_unit).toFixed(2)}</p>
                                     </li>
                                 ))}
                             </ul>

@@ -1,29 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Button from '../../components/ui/Button';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { getOrders } from '../../lib/api';
+import { getOrdersForUser } from '../../lib/api';
+import { useAuth } from '../../hooks/useAuth';
 import type { Order } from '../../types';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 const OrdersPage: React.FC = () => {
+    const { user } = useAuth();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!user) return;
         const fetchOrders = async () => {
             try {
-                setLoading(true);
-                const ordersData = await getOrders();
-                setOrders(ordersData);
+                const userOrders = await getOrdersForUser(user.id);
+                setOrders(userOrders as any);
             } catch (err) {
-                setError("Failed to fetch your orders.");
+                setError("Failed to load your orders.");
             } finally {
                 setLoading(false);
             }
         };
         fetchOrders();
-    }, []);
+    }, [user]);
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -49,22 +51,22 @@ const OrdersPage: React.FC = () => {
                             <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4">
                                 <div>
                                     <p className="font-bold text-lg">Order #{order.id}</p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Placed on {new Date(order.date).toLocaleDateString()}</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Placed on {new Date(order.created_at).toLocaleDateString()}</p>
                                 </div>
                                 <div className="mt-2 sm:mt-0">
                                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>{order.status}</span>
                                 </div>
                             </div>
                             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                                {order.items.slice(0, 1).map(item => ( // Show only the first item for summary
+                                {order.order_items.slice(0, 1).map(item => ( // Show only the first item for summary
                                     <div key={item.id} className="flex items-center mb-2">
-                                        <img src={item.imageUrl} alt={item.name} className="h-12 w-12 rounded object-cover"/>
-                                        <p className="ml-4 text-sm font-medium">{item.name}{order.items.length > 1 && ` and ${order.items.length - 1} more...`}</p>
+                                        <img src={item.products.images[0]} alt={item.products.name} className="h-12 w-12 rounded object-cover"/>
+                                        <p className="ml-4 text-sm font-medium">{item.products.name}{order.order_items.length > 1 && ` and ${order.order_items.length - 1} more...`}</p>
                                     </div>
                                 ))}
                             </div>
                             <div className="mt-4 flex justify-between items-center">
-                                <p className="font-semibold">Total: ${order.total.toFixed(2)}</p>
+                                <p className="font-semibold">Total: ${Number(order.total).toFixed(2)}</p>
                                 <Link to={`/dashboard/orders/${order.id}`}>
                                     <Button variant="secondary" size="sm">View Details</Button>
                                 </Link>

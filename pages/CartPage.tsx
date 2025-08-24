@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
@@ -8,7 +7,7 @@ const CartPage: React.FC = () => {
     const { cartItems, removeFromCart, updateQuantity } = useCart();
     const navigate = useNavigate();
 
-    const subtotal = cartItems.reduce((acc, item) => acc + item.quantity * item.selectedVariant.pricePerUnit, 0);
+    const subtotal = cartItems.reduce((acc, item) => acc + item.quantity * item.selectedVariant.price_per_unit, 0);
     const taxes = subtotal * 0.08;
     const shipping = 50.00;
     const total = subtotal + taxes + shipping;
@@ -40,7 +39,7 @@ const CartPage: React.FC = () => {
                             {cartItems.map(item => (
                                 <li key={item.id} className="flex py-6">
                                     <div className="flex-shrink-0">
-                                        <img src={item.product.imageUrl} alt={item.product.name} className="w-24 h-24 rounded-md object-center object-cover sm:w-32 sm:h-32"/>
+                                        <img src={item.product.images[0]} alt={item.product.name} className="w-24 h-24 rounded-md object-center object-cover sm:w-32 sm:h-32"/>
                                     </div>
                                     <div className="ml-4 flex-1 flex flex-col justify-between sm:ml-6">
                                         <div>
@@ -48,15 +47,15 @@ const CartPage: React.FC = () => {
                                                 <h3 className="text-base font-medium text-gray-900 dark:text-white">
                                                     <Link to={`/product/${item.product.id}`}>{item.product.name}</Link>
                                                 </h3>
-                                                <p className="ml-4 text-base font-medium text-gray-900 dark:text-white">${(item.quantity * item.selectedVariant.pricePerUnit).toFixed(2)}</p>
+                                                <p className="ml-4 text-base font-medium text-gray-900 dark:text-white">${(item.quantity * item.selectedVariant.price_per_unit).toFixed(2)}</p>
                                             </div>
-                                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{item.selectedVariant.name} - {item.selectedVariant.paperType}</p>
+                                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{item.selectedVariant.name} - {item.selectedVariant.paper_type}</p>
                                             <div className="mt-1 flex items-center">
                                                 <label htmlFor={`quantity-${item.id}`} className="mr-2 text-sm text-gray-500 dark:text-gray-400">Qty:</label>
                                                 <input
                                                     id={`quantity-${item.id}`}
                                                     type="number"
-                                                    min={item.product.minOrderQuantity}
+                                                    min={item.product.min_order_quantity}
                                                     value={item.quantity}
                                                     onChange={(e) => updateQuantity(item.id, parseInt(e.target.value, 10))}
                                                     className="w-20 border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-sm focus:ring-indigo-500 focus:border-indigo-500"

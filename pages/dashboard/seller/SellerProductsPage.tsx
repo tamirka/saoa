@@ -1,35 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../../components/ui/Button';
-import LoadingSpinner from '../../../components/ui/LoadingSpinner';
-import { getProductsBySeller } from '../../../lib/api';
+import { getSellerProducts } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
 import type { Product } from '../../../types';
 import { Link } from 'react-router-dom';
+import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 
 const SellerProductsPage: React.FC = () => {
     const { user } = useAuth();
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
+    
     useEffect(() => {
+        if (!user) return;
         const fetchProducts = async () => {
-            if (!user) return;
-            setLoading(true);
             try {
-                const data = await getProductsBySeller(user.id);
-                setProducts(data);
+                const sellerProducts = await getSellerProducts(user.id);
+                setProducts(sellerProducts as any[]);
             } catch (err) {
-                setError("Failed to fetch your products.");
+                setError("Failed to load your products.");
             } finally {
                 setLoading(false);
             }
         };
         fetchProducts();
     }, [user]);
-
-    if (loading) return <LoadingSpinner />;
-    if (error) return <p className="text-red-500">{error}</p>;
+    
+    if(loading) return <LoadingSpinner />;
+    if(error) return <p className="text-red-500">{error}</p>;
 
     return (
         <div>
@@ -47,11 +46,11 @@ const SellerProductsPage: React.FC = () => {
                         {products.map(product => (
                             <li key={product.id}>
                                 <div className="px-4 py-4 sm:px-6 flex items-center space-x-4">
-                                    <img className="h-16 w-16 rounded-md" src={product.imageUrl} alt={product.name} />
+                                    <img className="h-16 w-16 rounded-md object-cover" src={product.images[0]} alt={product.name} />
                                     <div className="flex-1">
                                         <p className="text-sm font-medium text-indigo-600 truncate">{product.name}</p>
-                                        <p className="text-sm text-gray-500">{product.category}</p>
-                                        <p className="text-sm text-gray-500">MOQ: {product.minOrderQuantity}</p>
+                                        <p className="text-sm text-gray-500">{product.categories?.name}</p>
+                                        <p className="text-sm text-gray-500">MOQ: {product.min_order_quantity}</p>
                                     </div>
                                     <div className="flex items-center space-x-2">
                                         <Button variant="ghost" size="sm">Edit</Button>

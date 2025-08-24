@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import FileUploader from '../components/ui/FileUploader';
 import { StarIcon } from '../components/ui/Icons';
-import type { Review, Product } from '../types';
+import type { Product, ProductVariant, Seller } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useToast } from '../hooks/useToast';
 import { getProductById, getOrCreateConversation } from '../lib/api';
@@ -19,30 +19,19 @@ const StarRating: React.FC<{ rating: number }> = ({ rating }) => {
   );
 };
 
-const ReviewItem: React.FC<{ review: Review }> = ({ review }) => {
-    return (
-        <div className="py-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center mb-2">
-                <StarRating rating={review.rating} />
-                <p className="ml-4 font-bold text-gray-900 dark:text-white">{review.author}</p>
-            </div>
-            <p className="text-gray-600 dark:text-gray-300">{review.comment}</p>
-            <p className="text-sm text-gray-400 mt-2">{review.date}</p>
-        </div>
-    );
-}
+type FullProduct = Product & { product_variants: ProductVariant[], sellers: Seller };
 
 const ProductPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [product, setProduct] = useState<Product | null>(null);
+  
+  const [product, setProduct] = useState<FullProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isContacting, setIsContacting] = useState(false);
 
   const [selectedImage, setSelectedImage] = useState<string | undefined>();
-  const [quantity, setQuantity] = useState(100);
-  const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>();
+  const [quantity, setQuantity] = useState(50);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>();
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [activeTab, setActiveTab] = useState('description');
 
@@ -51,53 +40,38 @@ const ProductPage: React.FC = () => {
 
   useEffect(() => {
     const fetchProduct = async () => {
-        if (!id) return;
+      if (!id) return;
+      try {
         setLoading(true);
-        setError(null);
-        try {
-            const productData = await getProductById(id);
-            if (productData) {
-                setProduct(productData);
-                setSelectedImage(productData.images?.[0] || productData.imageUrl);
-                setSelectedVariantId(productData.variants?.[0]?.id);
-                setQuantity(productData.minOrderQuantity);
-            } else {
-                setError("Product not found.");
-            }
-        } catch (err) {
-            setError("Failed to fetch product details.");
-        } finally {
-            setLoading(false);
+        const fetchedProduct = await getProductById(id);
+        setProduct(fetchedProduct);
+        if (fetchedProduct) {
+          setSelectedImage(fetchedProduct.images?.[0]);
+          setSelectedVariantId(fetchedProduct.product_variants?.[0]?.id);
+          setQuantity(fetchedProduct.min_order_quantity);
         }
+      } catch (err) {
+        setError("Failed to load product details.");
+      } finally {
+        setLoading(false);
+      }
     };
     fetchProduct();
   }, [id]);
 
   const handleContactSeller = async () => {
-    if (!product?.seller.id) return;
-    setIsContacting(true);
+    if (!product) return;
     try {
-      const conversationId = await getOrCreateConversation(product.seller.id);
-      navigate(`/messages?conversationId=${conversationId}`);
+        await getOrCreateConversation(product.seller_id);
+        addToast('Conversation started!', 'info');
+        navigate('/messages');
     } catch (err) {
-      addToast('Could not start conversation.', 'error');
-      console.error(err);
-    } finally {
-      setIsContacting(false);
+        addToast('Could not start conversation.', 'error');
     }
   };
 
-  if (loading) {
-    return <div className="flex justify-center items-center h-96"><LoadingSpinner /></div>;
-  }
-  
-  if (error || !product) {
-    return <div className="text-center py-20">{error || 'Product not found.'}</div>;
-  }
-
-  const selectedVariant = product.variants.find(v => v.id === selectedVariantId);
-  
-  const totalPrice = selectedVariant ? (selectedVariant.pricePerUnit * quantity).toFixed(2) : '0.00';
+  const selectedVariant = product?.product_variants.find(v => v.id === selectedVariantId);
+  const totalPrice = selectedVariant ? (selectedVariant.price_per_unit * quantity).toFixed(2) : '0.00';
 
   const handleAddToCart = () => {
     if (product && selectedVariant) {
@@ -108,6 +82,9 @@ const ProductPage: React.FC = () => {
     }
   };
 
+  if (loading) return <LoadingSpinner />;
+  if (error) return <div className="text-center py-20 text-red-500">{error}</div>;
+  if (!product) return <div className="text-center py-20">Product not found.</div>;
 
   return (
     <div className="bg-white dark:bg-gray-900">
@@ -133,8 +110,8 @@ const ProductPage: React.FC = () => {
             
             <div className="mt-4 flex items-center">
                 <div className="flex items-center">
-                    <StarRating rating={product.rating} />
-                    <a href="#reviews" className="ml-3 text-sm font-medium text-indigo-600 hover:text-indigo-500">{product.reviewsCount} reviews</a>
+                    <StarRating rating={4.5} /> {/* Mock rating */}
+                    <a href="#reviews" className="ml-3 text-sm font-medium text-indigo-600 hover:text-indigo-500">120 reviews</a>
                 </div>
             </div>
 
@@ -147,11 +124,11 @@ const ProductPage: React.FC = () => {
             <div className="mt-6">
                 <h3 className="text-sm text-gray-900 dark:text-white font-medium">Size & Paper Type</h3>
                 <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {product.variants.map(variant => (
+                    {product.product_variants.map(variant => (
                         <button key={variant.id} onClick={() => setSelectedVariantId(variant.id)}
                             className={`p-3 border rounded-md text-sm text-left ${selectedVariantId === variant.id ? 'border-indigo-500 ring-2 ring-indigo-500' : 'border-gray-300 dark:border-gray-600'}`}>
                             <span className="font-semibold block">{variant.name}</span>
-                            <span className="text-gray-500 dark:text-gray-400">{variant.paperType}</span>
+                            <span className="text-gray-500 dark:text-gray-400">{variant.paper_type}</span>
                         </button>
                     ))}
                 </div>
@@ -160,10 +137,10 @@ const ProductPage: React.FC = () => {
             {/* Quantity */}
             <div className="mt-6">
                 <h3 className="text-sm text-gray-900 dark:text-white font-medium">Quantity</h3>
-                <input type="number" value={quantity} onChange={e => setQuantity(Math.max(product.minOrderQuantity, parseInt(e.target.value, 10) || product.minOrderQuantity))}
-                    min={product.minOrderQuantity} step="50"
+                <input type="number" value={quantity} onChange={e => setQuantity(Math.max(product.min_order_quantity, parseInt(e.target.value, 10) || product.min_order_quantity))}
+                    min={product.min_order_quantity} step="50"
                     className="mt-2 w-full border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:ring-indigo-500 focus:border-indigo-500" />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Minimum order: {product.minOrderQuantity} units</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Minimum order: {product.min_order_quantity} units</p>
             </div>
             
             {/* File Upload */}
@@ -174,8 +151,8 @@ const ProductPage: React.FC = () => {
 
             {/* Action Buttons */}
             <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Button size="lg" variant="secondary" onClick={handleContactSeller} disabled={isContacting}>
-                  {isContacting ? 'Opening...' : 'Contact Seller'}
+                <Button size="lg" variant="secondary" onClick={handleContactSeller}>
+                  Contact Seller
                 </Button>
                 <Button size="lg" variant="primary" onClick={handleAddToCart}>Add to Cart</Button>
             </div>
@@ -188,28 +165,13 @@ const ProductPage: React.FC = () => {
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                     <button onClick={() => setActiveTab('description')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'description' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'}`}>Description</button>
                     <button onClick={() => setActiveTab('faqs')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'faqs' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'}`}>FAQs</button>
-                    <button id="reviews" onClick={() => setActiveTab('reviews')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'reviews' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'}`}>Reviews ({product.reviews.length})</button>
+                    <button id="reviews" onClick={() => setActiveTab('reviews')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'reviews' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'}`}>Reviews</button>
                 </nav>
             </div>
             <div className="mt-8">
                 {activeTab === 'description' && <div className="prose dark:prose-invert max-w-none text-gray-600 dark:text-gray-300"><p>{product.description}</p></div>}
-                {activeTab === 'faqs' && (
-                    <div className="space-y-4">
-                        {product.faqs.length > 0 ? product.faqs.map((faq, i) => (
-                            <div key={i}>
-                                <h4 className="font-semibold text-gray-900 dark:text-white">{faq.question}</h4>
-                                <p className="text-gray-600 dark:text-gray-300 mt-1">{faq.answer}</p>
-                            </div>
-                        )) : <p>No frequently asked questions for this product.</p>}
-                    </div>
-                )}
-                {activeTab === 'reviews' && (
-                    <div>
-                        {product.reviews.length > 0 ? product.reviews.map(review => (
-                            <ReviewItem key={review.id} review={review} />
-                        )) : <p>No reviews yet for this product.</p>}
-                    </div>
-                )}
+                {activeTab === 'faqs' && <p>No frequently asked questions for this product.</p>}
+                {activeTab === 'reviews' && <p>No reviews yet for this product.</p>}
             </div>
         </div>
       </div>

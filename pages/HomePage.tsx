@@ -4,9 +4,8 @@ import Button from '../components/ui/Button';
 import ProductCard from '../components/ui/ProductCard';
 import CategoryCard from '../components/ui/CategoryCard';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { getProducts, getCategories } from '../lib/api';
+import { getFeaturedProducts, getCategories } from '../lib/api';
 import type { Product, Category } from '../types';
-
 
 const HomePage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -18,12 +17,12 @@ const HomePage: React.FC = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [productsData, categoriesData] = await Promise.all([
-          getProducts({ limit: 3 }),
-          getCategories(),
+        const [featuredProducts, allCategories] = await Promise.all([
+          getFeaturedProducts(),
+          getCategories()
         ]);
-        setProducts(productsData);
-        setCategories(categoriesData);
+        setProducts(featuredProducts);
+        setCategories(allCategories);
       } catch (err) {
         setError('Failed to load page data. Please try again later.');
         console.error(err);
@@ -60,7 +59,7 @@ const HomePage: React.FC = () => {
       {/* Category Grid */}
       <section className="container mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white text-center">Shop by Category</h2>
-        {loading ? <LoadingSpinner /> : error ? <p className="text-center text-red-500 mt-4">{error}</p> : (
+        {loading ? <LoadingSpinner /> : error ? <p className="text-center text-red-500">{error}</p> : (
             <div className="mt-8 grid grid-cols-2 gap-y-10 gap-x-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 xl:gap-x-8">
               {categories.map(category => (
                 <CategoryCard key={category.id} category={category} />
@@ -73,13 +72,13 @@ const HomePage: React.FC = () => {
       <section className="bg-gray-100 dark:bg-gray-800 py-16">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white text-center">Featured Products</h2>
-           {loading ? <LoadingSpinner /> : error ? <p className="text-center text-red-500 mt-4">{error}</p> : (
-            <div className="mt-8 grid grid-cols-1 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:gap-x-8">
-                {products.map(product => (
-                <ProductCard key={product.id} product={product} />
-                ))}
-            </div>
-           )}
+            {loading ? <LoadingSpinner /> : error ? <p className="text-center text-red-500">{error}</p> : (
+                <div className="mt-8 grid grid-cols-1 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:gap-x-8">
+                    {products.map(product => (
+                    <ProductCard key={product.id} product={product} />
+                    ))}
+                </div>
+            )}
         </div>
       </section>
 

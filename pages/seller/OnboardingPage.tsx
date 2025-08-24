@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
@@ -16,43 +15,42 @@ const OnboardingPage: React.FC = () => {
     const [formData, setFormData] = useState({
         company_name: '',
         description: '',
-        logo: null as File | null,
         shipping_policy: '',
         return_policy: '',
     });
+    const [logoFile, setLogoFile] = useState<File | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    };
-
-    const handleFileChange = (file: File | null) => {
-        setFormData(prev => ({ ...prev, logo: file }));
     };
     
     const handleNext = () => setStep(s => s + 1);
     const handlePrev = () => setStep(s => s - 1);
 
     const handleFinish = async () => {
+        if (!user || !logoFile) {
+            addToast('Please provide all details, including a logo.', 'error');
+            return;
+        }
+
         setIsLoading(true);
         try {
-            await createSellerProfile(formData);
+            await createSellerProfile(user.id, formData, logoFile);
             addToast("Your seller profile has been created!", 'success');
             navigate('/dashboard');
-        } catch (error) {
-            console.error(error);
-            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-            addToast(`Failed to create profile: ${errorMessage}`, 'error');
+        } catch (error: any) {
+            addToast(error.message || "Failed to create profile.", 'error');
         } finally {
             setIsLoading(false);
         }
     }
 
-    if (user?.role !== 'seller') {
+    if (!user) {
         return (
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
-                <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Access Denied</h1>
-                <p className="mt-4 text-gray-500 dark:text-gray-400">This page is for sellers only.</p>
+                <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Please sign in</h1>
+                <p className="mt-4 text-gray-500 dark:text-gray-400">You must be logged in to create a seller profile.</p>
             </div>
         );
     }
@@ -97,7 +95,7 @@ const OnboardingPage: React.FC = () => {
                         </div>
                          <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company Logo</label>
-                            <FileUploader onFileChange={handleFileChange} />
+                            <FileUploader onFileChange={setLogoFile} />
                         </div>
                         <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Short Description</label>

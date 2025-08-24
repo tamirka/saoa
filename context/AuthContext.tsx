@@ -1,92 +1,70 @@
-import React, { createContext, useState, useEffect, useMemo } from 'react';
-import type { AuthContextType, User } from '../types';
+import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { fetchUserProfile } from '../lib/auth';
+import type { AuthContextType, Profile } from '../types';
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const RETRY_DELAY = 500;
-const MAX_RETRIES = 3;
-
-const fetchProfileWithRetries = async (userId: string, email: string, retries = MAX_RETRIES): Promise<User | null> => {
-    const profile = await fetchUserProfile(userId, email);
-    if (profile) {
-        return profile;
-    }
-    if (retries > 0) {
-        // Wait and retry. This is crucial for the race condition after signup
-        // where the profile might not have been created by the trigger yet.
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-        return fetchProfileWithRetries(userId, email, retries - 1);
-    }
-    // If it's still null, it's a genuine problem.
-    console.error(`Failed to fetch profile for user ${userId} after ${MAX_RETRIES} retries.`);
-    return null;
-}
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [user, setUser] = useState<Profile | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const fetchAndSetUser = useCallback(async (userId: string, retries = 3) => {
+        for (let i = 0; i < retries; i++) {
+            const profile = await fetchUserProfile(userId);
+            if (profile) {
+                setUser(profile);
+                return;
+            }
+            // Wait before retrying
+            await new Promise(res => setTimeout(res, 1000 * (i + 1)));
+        }
+        console.error("Failed to fetch user profile after multiple retries.");
+        // Potentially sign out the user if profile is critical
+        await supabase.auth.signOut();
+    }, []);
 
     useEffect(() => {
-        const checkUser = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
+        setLoading(true);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
-                const profile = await fetchProfileWithRetries(session.user.id, session.user.email!);
-                setUser(profile);
-            }
-            setIsLoading(false);
-        };
-        
-        checkUser();
-
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_IN' && session?.user) {
-                 const profile = await fetchProfileWithRetries(session.user.id, session.user.email!);
-                 setUser(profile);
-            } else if (event === 'SIGNED_OUT') {
+                await fetchAndSetUser(session.user.id);
+            } else {
                 setUser(null);
             }
+            setLoading(false);
         });
 
         return () => {
-            authListener.subscription.unsubscribe();
+            subscription.unsubscribe();
         };
-    }, []);
+    }, [fetchAndSetUser]);
 
-    const login = (userData: User) => {
-        setUser(userData);
-    };
-
-    const logout = () => {
-        supabase.auth.signOut();
+    const signOut = async () => {
+        await supabase.auth.signOut();
         setUser(null);
     };
 
-    const switchRole = () => {
-        // In a real app, this might involve more complex logic or a DB update.
-        // For now, we'll just toggle the state for the UI.
-        setUser(currentUser => {
-            if (!currentUser) return null;
-            return {
-                ...currentUser,
-                role: currentUser.role === 'buyer' ? 'seller' : 'buyer',
-            };
-        });
-    };
+    const switchToSeller = useCallback(() => {
+        if (user) {
+            setUser({ ...user, role: 'seller' });
+        }
+    }, [user]);
+
+    const switchToBuyer = useCallback(() => {
+        if (user) {
+            setUser({ ...user, role: 'buyer' });
+        }
+    }, [user]);
 
     const value = useMemo(() => ({
         isAuthenticated: !!user,
         user,
-        login,
-        logout,
-        switchRole,
-    }), [user]);
-
-    // Don't render children until session is checked
-    if (isLoading) {
-        return null; // Or a global loading spinner
-    }
+        loading,
+        signOut,
+        switchToSeller,
+        switchToBuyer,
+    }), [user, loading, switchToSeller, switchToBuyer]);
 
     return (
         <AuthContext.Provider value={value}>

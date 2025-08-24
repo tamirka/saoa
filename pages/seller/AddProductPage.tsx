@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import FileUploader from '../../components/ui/FileUploader';
 import { getCategories, createProduct } from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
+import { useAuth } from '../../hooks/useAuth';
 import type { Category } from '../../types';
 
 interface VariantFormData {
@@ -18,6 +18,7 @@ const AddProductPage: React.FC = () => {
     const [step, setStep] = useState(1);
     const navigate = useNavigate();
     const { addToast } = useToast();
+    const { user } = useAuth();
 
     const [categories, setCategories] = useState<Category[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -37,14 +38,14 @@ const AddProductPage: React.FC = () => {
     useEffect(() => {
         const fetchCategories = async () => {
             try {
-                const cats = await getCategories();
-                setCategories(cats);
+                const fetchedCategories = await getCategories();
+                setCategories(fetchedCategories);
             } catch (err) {
-                addToast("Could not load categories.", 'error');
+                addToast('Could not load categories', 'error');
             }
         };
         fetchCategories();
-    }, [addToast]);
+    }, []);
 
     const handleNext = () => setStep(s => s + 1);
     const handlePrev = () => setStep(s => s - 1);
@@ -69,23 +70,22 @@ const AddProductPage: React.FC = () => {
 
     const handlePublish = async () => {
         setError(null);
-        if (!productData.name || !productData.category_id || images.length === 0) {
-            setError("Please fill in all required fields and upload at least one image.");
+        if (!user) {
+            setError("You must be logged in to publish a product.");
             return;
         }
+        if (!productData.name || !productData.category_id || images.length === 0 || variants.some(v => !v.name || !v.price_per_unit)) {
+            setError("Please fill in all required fields, add at least one variant, and upload at least one image.");
+            return;
+        }
+        
         setIsLoading(true);
         try {
-            await createProduct({
-                ...productData,
-                variants,
-                images,
-            });
+            await createProduct(user.id, productData, variants, images);
             addToast("Product published successfully!", 'success');
             navigate('/dashboard/my-products');
-        } catch (err) {
-            const message = err instanceof Error ? err.message : "An unexpected error occurred.";
-            setError(message);
-            addToast(`Error: ${message}`, 'error');
+        } catch (err: any) {
+            setError(err.message || 'An error occurred during publishing.');
         } finally {
             setIsLoading(false);
         }

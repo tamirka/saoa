@@ -1,16 +1,15 @@
-import React, { useState, Fragment } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../hooks/useTheme';
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
-import { signOut } from '../../lib/auth';
 import { SunIcon, MoonIcon, Logo, ShoppingCartIcon, MenuIcon, XIcon, BellIcon, ChevronDownIcon } from '../ui/Icons';
 import Button from '../ui/Button';
 
 const Navbar: React.FC = () => {
     const { theme, toggleTheme } = useTheme();
     const { itemCount } = useCart();
-    const { isAuthenticated, user, logout } = useAuth();
+    const { isAuthenticated, user, signOut } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -31,7 +30,6 @@ const Navbar: React.FC = () => {
         setIsProfileOpen(false);
         setIsMenuOpen(false);
         await signOut();
-        logout();
     }
 
     return (
@@ -89,7 +87,7 @@ const Navbar: React.FC = () => {
                            ) : (
                                <div className="relative">
                                    <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center space-x-2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800">
-                                       <span className="h-8 w-8 rounded-full bg-indigo-200 dark:bg-indigo-800 flex items-center justify-center text-sm font-bold text-indigo-700 dark:text-indigo-300">{user?.name.charAt(0).toUpperCase()}</span>
+                                       <span className="h-8 w-8 rounded-full bg-indigo-200 dark:bg-indigo-800 flex items-center justify-center text-sm font-bold text-indigo-700 dark:text-indigo-300">{user?.full_name?.charAt(0).toUpperCase()}</span>
                                        <ChevronDownIcon className="h-4 w-4 text-gray-500" />
                                    </button>
                                    {isProfileOpen && (

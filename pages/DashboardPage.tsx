@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const buyerLinks = [
     { name: 'My Orders', path: '/dashboard/orders' },
@@ -15,7 +16,11 @@ const sellerLinks = [
 ]
 
 const DashboardPage: React.FC = () => {
-    const { isAuthenticated, user } = useAuth();
+    const { isAuthenticated, user, loading } = useAuth();
+    
+    if (loading) {
+        return <LoadingSpinner />;
+    }
     
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
@@ -40,7 +45,7 @@ const DashboardPage: React.FC = () => {
                            <div>
                                 <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Buyer Menu</h3>
                                 {buyerLinks.map(link => (
-                                    <NavLink key={link.name} to={link.path} end className={navLinkClass}>
+                                    <NavLink key={link.name} to={link.path} end={link.path.endsWith('/orders')} className={navLinkClass}>
                                         {link.name}
                                     </NavLink>
                                 ))}

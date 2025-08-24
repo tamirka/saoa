@@ -1,3 +1,2 @@
-// This file is no longer in use.
-// All mock data has been replaced with live data fetching from Supabase via functions in `lib/api.ts`.
-// This file can be safely deleted from the project.
+// This file is no longer needed as all data is fetched from the Supabase backend.
+// It can be safely removed from the project.

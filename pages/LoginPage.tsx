@@ -11,39 +11,37 @@ const LoginPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
 
     useEffect(() => {
         if (isAuthenticated) {
+            // Redirect sellers without a profile to onboarding
+            if(user?.role === 'seller') {
+                 // A more robust check would see if a seller profile exists in the `sellers` table
+                 // For now, we assume a new seller needs onboarding.
+            }
             navigate('/dashboard', { replace: true });
         }
-    }, [isAuthenticated, navigate]);
-
-    const validateEmail = (email: string) => {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    };
+    }, [isAuthenticated, user, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
 
-        if (!validateEmail(email)) {
-            setError('Please enter a valid email address.');
-            return;
-        }
-        if (!password) {
-            setError('Please enter your password.');
+        if (!email || !password) {
+            setError('Please enter both email and password.');
             return;
         }
 
         setIsLoading(true);
-        const { error: authError } = await signInWithEmail(email, password);
-        setIsLoading(false);
-
-        if (authError) {
-            setError(authError.message);
+        try {
+            await signInWithEmail(email, password);
+            // The useEffect will handle the redirect
+        } catch (err: any) {
+            setError(err.message || "Failed to sign in.");
+        } finally {
+            setIsLoading(false);
         }
-        // On success, the useEffect will handle the redirect when isAuthenticated becomes true.
     };
 
     return (

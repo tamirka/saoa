@@ -2,21 +2,19 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import { Logo } from '../components/ui/Icons';
-import { useAuth } from '../hooks/useAuth';
 import { signUpWithEmail } from '../lib/auth';
 
 type Role = 'buyer' | 'seller';
 
 const SignUpPage: React.FC = () => {
     const [role, setRole] = useState<Role>('buyer');
-    const [name, setName] = useState('');
+    const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     
     const navigate = useNavigate();
-    const { login } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -26,19 +24,18 @@ const SignUpPage: React.FC = () => {
             return;
         }
         setIsLoading(true);
-        
-        const { user, error: authError } = await signUpWithEmail(name, email, password, role);
 
-        setIsLoading(false);
-        if (authError) {
-            setError(authError.message);
-        } else if (user) {
-            login(user);
-            if (user.role === 'seller') {
+        try {
+            await signUpWithEmail(email, password, fullName, role);
+            if (role === 'seller') {
                 navigate('/seller-onboarding');
             } else {
                 navigate('/dashboard');
             }
+        } catch (err: any) {
+            setError(err.message || 'An unexpected error occurred.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -77,7 +74,7 @@ const SignUpPage: React.FC = () => {
                     <div className="rounded-md shadow-sm -space-y-px">
                         <div>
                             <label htmlFor="full-name" className="sr-only">Full Name</label>
-                            <input id="full-name" name="name" type="text" required value={name} onChange={e => setName(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 text-gray-900 dark:text-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" placeholder="Full Name" />
+                            <input id="full-name" name="name" type="text" required value={fullName} onChange={e => setFullName(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 text-gray-900 dark:text-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" placeholder="Full Name" />
                         </div>
                          <div>
                             <label htmlFor="email-address-signup" className="sr-only">Email address</label>
